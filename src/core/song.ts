@@ -5,8 +5,11 @@
  * unit-tested without a DOM, a browser, or Web MIDI.
  */
 
-/** The Conway's Game module exposes 64 trigger/gate outputs. */
-export const MAX_CHANNELS = 64
+/**
+ * The Conway's Game module exposes 64 trigger/gate outputs. The last one is reserved for
+ * the play gate (see PLAY_GATE_NOTE in core/midi.ts), so songs get 63 sequenced channels.
+ */
+export const MAX_CHANNELS = 63
 export const MIN_TEMPO = 20
 export const MAX_TEMPO = 400
 export const DEFAULT_TEMPO = 120
@@ -44,7 +47,7 @@ export interface Section {
 export interface Channel {
   id: string
   name: string
-  /** 0-based module output (0..63). MIDI note = settings.baseNote + output. */
+  /** 0-based module output (0..62). MIDI note = settings.baseNote + output. */
   output: number
   muted: boolean
   /** Solo: while any channel is soloed, every channel that is not soloed is silenced. */

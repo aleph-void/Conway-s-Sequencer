@@ -19,7 +19,7 @@ describe('SequencerGrid', () => {
     expect(wrapper.findAll('[data-testid="channel-row-0"] .cell')).toHaveLength(64 + 16)
     expect(wrapper.findAll('.bar-label')).toHaveLength(5)
     expect(wrapper.get('[data-testid="grid-section-0"]').text()).toContain('120 BPM')
-    expect(wrapper.get('[data-testid="channel-count"]').text()).toContain('8 / 64')
+    expect(wrapper.get('[data-testid="channel-count"]').text()).toContain('8 / 63')
   })
 
   it('dims rows that are muted, or silenced by another channel\'s solo', async () => {
@@ -120,7 +120,7 @@ describe('SequencerGrid', () => {
     while (store.canAddChannel) store.addChannel()
     await wrapper.vm.$nextTick()
     expect(wrapper.get('[data-testid="add-channel"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.findAll('.channel-row')).toHaveLength(64)
+    expect(wrapper.findAll('.channel-row')).toHaveLength(63)
   })
 
   it('highlights the playhead column while playing', async () => {
