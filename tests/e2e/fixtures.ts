@@ -54,6 +54,7 @@ export const test = base.extend<{ midiPage: Page }>({
 })
 
 export { expect }
+export type { Page }
 
 export async function enableMidi(page: Page, outputId = 'conway') {
   await page.getByTestId('enable-midi').click()

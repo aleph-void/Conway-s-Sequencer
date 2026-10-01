@@ -8,6 +8,7 @@ import SequencerGrid from './components/SequencerGrid.vue'
 import SongIO from './components/SongIO.vue'
 import SongBrowser from './components/SongBrowser.vue'
 import BrandLogo from './components/BrandLogo.vue'
+import PwaStatus from './components/PwaStatus.vue'
 import { useUiStore } from './stores/ui'
 import { useFullscreen } from './composables/useFullscreen'
 
@@ -75,6 +76,7 @@ const year = new Date().getFullYear()
         reserved.
       </span>
     </footer>
+    <PwaStatus />
   </div>
 </template>
 
