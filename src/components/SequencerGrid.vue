@@ -52,11 +52,25 @@ function end() {
 onMounted(() => window.addEventListener('pointerup', end))
 onBeforeUnmount(() => window.removeEventListener('pointerup', end))
 
-function cellClass(sectionId: string, channelId: string, step: number, globalStep: number, subdivision: number) {
+/**
+ * Classes for one cell. Consecutive on-steps are one held gate (see `compileSong`), so a
+ * cell whose neighbour within the same section is also on gets `tie-prev` / `tie-next` and
+ * the CSS removes the edge between them, drawing the run as a single continuous bar.
+ */
+function cellClass(
+  sectionId: string,
+  channelId: string,
+  step: number,
+  globalStep: number,
+  subdivision: number,
+  stepCount: number,
+) {
   const section = store.sectionById(sectionId)
   const on = section ? isStepOn(section, channelId, step) : false
   return {
     on,
+    'tie-prev': on && step > 0 && isStepOn(section!, channelId, step - 1),
+    'tie-next': on && step < stepCount - 1 && isStepOn(section!, channelId, step + 1),
     beat: step % subdivision === 0,
     playhead: globalStep === currentStep.value,
   }
@@ -64,7 +78,7 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 </script>
 
 <template>
-  <section class="panel grid-panel" aria-labelledby="grid-heading">
+  <section class="panel grid-panel" aria-labelledby="grid-heading" data-testid="grid-panel">
     <div class="head">
       <h2 id="grid-heading">Gates</h2>
       <span class="muted count" data-testid="channel-count">
@@ -130,7 +144,16 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
             v-for="step in timing.stepCount"
             :key="step"
             class="cell"
-            :class="cellClass(section.id, channel.id, step - 1, timing.startStep + step - 1, section.subdivision)"
+            :class="
+              cellClass(
+                section.id,
+                channel.id,
+                step - 1,
+                timing.startStep + step - 1,
+                section.subdivision,
+                timing.stepCount,
+              )
+            "
             role="checkbox"
             tabindex="0"
             :aria-checked="isStepOn(section, channel.id, step - 1)"
@@ -149,7 +172,11 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 
 <style scoped>
 .grid-panel {
-  padding-bottom: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 12px;
 }
 
 .head {
@@ -169,8 +196,9 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 }
 
 .scroller {
+  flex: 1 1 auto;
+  min-height: 160px;
   overflow: auto;
-  max-height: 70vh;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
@@ -217,7 +245,7 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 .section-label {
   height: 32px;
   padding: 2px 8px;
-  border-left: 2px solid var(--accent-dim);
+  border-left: 2px solid var(--accent);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -245,12 +273,12 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 
 .channel-row {
   height: var(--cell-size);
-  border-bottom: 1px solid #0f141b;
+  border-bottom: 1px solid var(--cell-line);
 }
 
 .channel-row.is-muted .cell.on {
   background: var(--accent-dim);
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .cell {
@@ -258,7 +286,7 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
   width: var(--cell-size);
   height: var(--cell-size);
   background: var(--cell);
-  border-right: 1px solid #0b0f14;
+  border-right: 1px solid var(--cell-line);
   cursor: crosshair;
 }
 
@@ -272,17 +300,43 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 }
 
 .cell.on {
+  --edge-left: 1px;
+  --edge-right: 1px;
   background: var(--cell-on);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  /* Dark outline around the gate; the left/right edges are dropped where a run continues. */
+  box-shadow:
+    inset 0 1px 0 0 var(--cell-on-edge),
+    inset 0 -1px 0 0 var(--cell-on-edge),
+    inset var(--edge-left) 0 0 0 var(--cell-on-edge),
+    inset calc(-1 * var(--edge-right)) 0 0 0 var(--cell-on-edge);
+}
+
+/*
+ * A run of consecutive on-steps is one gate, so draw it as one bar: hide the grid line
+ * between tied cells and the outline on the tied side. The border keeps its width so the
+ * layout does not shift; a transparent border lets the cell's own background show through.
+ */
+.cell.on.tie-next {
+  --edge-right: 0px;
+  border-right-color: transparent;
+}
+
+.cell.on.tie-prev {
+  --edge-left: 0px;
+  border-left-color: transparent;
+}
+
+.cell.on:hover {
+  filter: brightness(1.15);
 }
 
 .cell.playhead {
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent-light);
   background-color: var(--playhead);
 }
 
 .cell.playhead.on {
-  background-color: #8ff0c4;
+  background-color: var(--cell-on-playhead);
 }
 
 .cell:focus-visible {

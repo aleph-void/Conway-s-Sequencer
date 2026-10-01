@@ -99,8 +99,8 @@ function remove() {
 }
 
 .toggle.active {
-  background: var(--accent-dim);
-  border-color: var(--accent-dim);
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
 }
 </style>

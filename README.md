@@ -2,7 +2,7 @@
 
 A client-side binary gate sequencer for the
 [Nervous Squirrel Conway's Game](https://www.nervoussquirrel.com/conways_game.html)
-eurorack module, by [alephvoid.com](https://alephvoid.com).
+eurorack module, by [Aleph Void, LLC](https://alephvoid.com).
 
 Draw on/off steps on a piano-roll style grid, one row per module output, and the
 app sends MIDI notes over [Web MIDI](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API)
@@ -23,7 +23,7 @@ backend, and songs autosave to local storage.
   toggles the focused cell for keyboard users.
 - **Gates follow the grid.** A gate goes high for the whole of every step it is
   drawn on, and consecutive on-steps hold it high as one long gate until the
-  next empty step.
+  next empty step. The grid draws such a run as one continuous bar.
 - **Sample-accurate-ish timing**: a look-ahead scheduler hands messages to the
   MIDI port with explicit timestamps, so JavaScript timer jitter never reaches
   the module. Edits while playing are picked up live.
@@ -36,6 +36,10 @@ backend, and songs autosave to local storage.
   song, or delete one. "New" and "Import JSON" add a song to the browser rather
   than replacing the one you have open.
 - **Loop, panic (Esc), Space to play/stop**, and JSON export/import.
+- **Editor-first layout.** The grid fills the viewport below a one-line
+  toolbar (MIDI output + transport); sections, module settings and song files
+  live in a collapsible settings drawer whose state is remembered. A Full
+  screen button puts the whole GUI in the browser's full-screen mode.
 
 ## Browser support
 
@@ -64,6 +68,37 @@ thresholds, the production build and the e2e suite on every push and pull
 request. On a push to `main` it then builds with `BASE_PATH=/<repo>/` and
 deploys `dist/` to GitHub Pages. Enable Pages for the repository with
 **Source: GitHub Actions** once, and every merge to `main` ships.
+
+## Automation
+
+The other files under `.github/` are free GitHub features that keep the
+repository healthy without any paid plan (the repository is public):
+
+- **Dependabot** (`dependabot.yml`) opens weekly, grouped pull requests for npm
+  packages and for the actions used in the workflows. Security updates arrive as
+  soon as an advisory is published.
+- **Dependabot auto-merge** (`workflows/dependabot-auto-merge.yml`) enables
+  GitHub auto-merge on Dependabot's minor and patch bumps, so they land once CI
+  is green; majors wait for a human. It needs **Allow auto-merge** enabled in
+  the repository settings and a ruleset on `main` that requires the CI job
+  (without a required check, auto-merge would merge immediately).
+- **CodeQL** (`workflows/codeql.yml`) scans the TypeScript on every pull
+  request, every push to `main` and weekly, and reports to the Security tab. If
+  CodeQL *default setup* is enabled in the repository's code-security settings,
+  disable it or delete this workflow; the two cannot run side by side.
+- **Dependency review** (`workflows/dependency-review.yml`) fails a pull request
+  that adds a dependency with a known high-severity vulnerability or a strong
+  copyleft licence. It requires **Dependency graph** to be enabled under the
+  repository's Advanced Security settings.
+- **OpenSSF Scorecard** (`workflows/scorecard.yml`) scores supply-chain
+  practices on every push to `main` and weekly, and publishes the result so a
+  badge can be shown.
+- **Workflow lint** (`workflows/workflow-lint.yml`) runs
+  [actionlint](https://github.com/rhysd/actionlint) and
+  [zizmor](https://github.com/zizmorcore/zizmor) whenever anything under
+  `.github/` changes, catching workflow syntax errors and security
+  anti-patterns. Every action is pinned to a commit SHA with the version in a
+  trailing comment; Dependabot updates both together.
 
 ## Song file format
 

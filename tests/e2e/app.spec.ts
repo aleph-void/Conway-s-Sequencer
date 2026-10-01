@@ -1,12 +1,63 @@
 import { expect, test } from './fixtures'
 
 test.describe('shell', () => {
-  test('loads with alephvoid.com branding and a default song', async ({ midiPage: page }) => {
-    await expect(page).toHaveTitle(/Conway's Sequencer · alephvoid.com/)
+  test('loads with Aleph Void branding and a default song', async ({ midiPage: page }) => {
+    await expect(page).toHaveTitle(/Conway's Sequencer · Aleph Void/)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText("Conway's Sequencer")
     await expect(page.locator('a[href="https://alephvoid.com"]').first()).toBeVisible()
+    await expect(page.getByTestId('brand-logo').first()).toBeVisible()
     await expect(page.getByTestId('channel-count')).toContainText('8 / 64 channels')
     await expect(page.getByTestId('sections-table').locator('tbody tr')).toHaveCount(1)
+  })
+
+  test('gives the grid most of the viewport and lets the settings drawer collapse', async ({ midiPage: page }) => {
+    const viewport = page.viewportSize()!
+    const gridPanel = page.getByTestId('grid-panel')
+    const withDrawer = (await gridPanel.boundingBox())!
+    await expect(page.getByTestId('settings-drawer')).toBeVisible()
+
+    await page.getByTestId('toggle-settings').click()
+    await expect(page.getByTestId('settings-drawer')).toHaveCount(0)
+    await expect(page.getByTestId('toggle-settings')).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('play')).toBeVisible()
+    const collapsed = (await gridPanel.boundingBox())!
+    expect(collapsed.height).toBeGreaterThan(withDrawer.height)
+    expect(collapsed.height).toBeGreaterThan(viewport.height * 0.6)
+    // Nothing scrolls off-screen: the shell is sized to the viewport.
+    expect(collapsed.y + collapsed.height).toBeLessThanOrEqual(viewport.height)
+
+    await page.reload()
+    await expect(page.getByTestId('settings-drawer')).toHaveCount(0)
+    await page.getByTestId('toggle-settings').click()
+    await expect(page.getByTestId('sections-table')).toBeVisible()
+  })
+
+  test('toggles full screen from the toolbar', async ({ midiPage: page }) => {
+    const button = page.getByTestId('toggle-fullscreen')
+    await expect(button).toHaveText(/Full screen/)
+    await expect(button).toHaveAttribute('aria-pressed', 'false')
+
+    // Headless Chromium has no real window to go full screen, so stub the
+    // API the way a browser would drive it: resolve, then fire fullscreenchange.
+    await page.evaluate(() => {
+      let element: Element | null = null
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => element })
+      document.documentElement.requestFullscreen = async () => {
+        element = document.documentElement
+        document.dispatchEvent(new Event('fullscreenchange'))
+      }
+      document.exitFullscreen = async () => {
+        element = null
+        document.dispatchEvent(new Event('fullscreenchange'))
+      }
+    })
+
+    await button.click()
+    await expect(button).toHaveText(/Exit full screen/)
+    await expect(button).toHaveAttribute('aria-pressed', 'true')
+    await button.click()
+    await expect(button).toHaveText(/^.*Full screen$/)
+    await expect(button).toHaveAttribute('aria-pressed', 'false')
   })
 
   test('explains when Web MIDI is unavailable', async ({ page }) => {

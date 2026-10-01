@@ -55,6 +55,36 @@ describe('SequencerGrid', () => {
     wrapper.unmount()
   })
 
+  it('ties consecutive on-steps into one continuous bar', async () => {
+    const store = useSongStore()
+    store.addSection({ bars: 1 })
+    const wrapper = mount(SequencerGrid)
+    const channel = store.song.channels[0]!
+    const first = store.song.sections[0]!
+    const second = store.song.sections[1]!
+    for (const step of [2, 3, 4, 63]) store.setStep(first.id, channel.id, step, true)
+    store.setStep(second.id, channel.id, 0, true)
+    await wrapper.vm.$nextTick()
+
+    const classes = (section: number, step: number) =>
+      wrapper.get(`[data-testid="cell-0-${section}-${step}"]`).classes()
+    // Run start: joined to the right only.
+    expect(classes(0, 2)).toContain('tie-next')
+    expect(classes(0, 2)).not.toContain('tie-prev')
+    // Middle: joined on both sides.
+    expect(classes(0, 3)).toContain('tie-prev')
+    expect(classes(0, 3)).toContain('tie-next')
+    // Run end: joined to the left only.
+    expect(classes(0, 4)).toContain('tie-prev')
+    expect(classes(0, 4)).not.toContain('tie-next')
+    // Off cells and single on-steps carry no ties.
+    expect(classes(0, 5)).not.toContain('tie-prev')
+    expect(classes(0, 1)).not.toContain('tie-next')
+    // Gates do not tie across a section boundary: each section is its own gate.
+    expect(classes(0, 63)).not.toContain('tie-next')
+    expect(classes(1, 0)).not.toContain('tie-prev')
+  })
+
   it('toggles with the keyboard', async () => {
     const store = useSongStore()
     const wrapper = mount(SequencerGrid)
