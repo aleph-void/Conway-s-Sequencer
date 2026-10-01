@@ -82,6 +82,110 @@ describe('SectionsPanel', () => {
     confirm.mockRestore()
   })
 
+  describe('drag-and-drop reordering', () => {
+    function setup() {
+      const store = useSongStore()
+      store.addSection({ name: 'B' })
+      store.addSection({ name: 'C' })
+      const wrapper = mount(SectionsPanel)
+      const names = () => store.song.sections.map((s) => s.name)
+      const row = (i: number) => wrapper.get(`[data-testid="section-row-${i}"]`)
+      return { store, wrapper, names, row }
+    }
+
+    /** Fake a row's box so the drop side can be derived from clientY. */
+    function placeRow(row: ReturnType<typeof mount>['element'] | Element, top: number, height = 20) {
+      ;(row as HTMLElement).getBoundingClientRect = () =>
+        ({ top, bottom: top + height, height, left: 0, right: 100, width: 100, x: 0, y: top, toJSON: () => ({}) }) as DOMRect
+    }
+
+    it('makes only the grip draggable, never the row or its inputs', () => {
+      const { row } = setup()
+      expect(row(0).get('[data-testid="section-handle"]').attributes('draggable')).toBe('true')
+      expect(row(0).attributes('draggable')).toBeUndefined()
+      expect(row(0).get('[data-testid="section-name"]').attributes('draggable')).toBeUndefined()
+    })
+
+    it('drops a row below a later row', async () => {
+      const { store, names, row } = setup()
+      const before = store.revision
+      await row(0).get('[data-testid="section-handle"]').trigger('dragstart')
+      expect(row(0).classes()).toContain('dragging')
+
+      placeRow(row(2).element, 40)
+      await row(2).trigger('dragover', { clientY: 55 })
+      expect(row(2).classes()).toContain('drop-after')
+      await row(2).trigger('drop')
+      expect(names()).toEqual(['B', 'C', 'A'])
+      expect(store.revision).toBe(before + 1)
+      expect(row(2).classes()).not.toContain('drop-after')
+      expect(row(2).classes()).not.toContain('dragging')
+    })
+
+    it('drops a row above an earlier row', async () => {
+      const { names, row } = setup()
+      await row(2).get('[data-testid="section-handle"]').trigger('dragstart')
+      placeRow(row(0).element, 0)
+      await row(0).trigger('dragover', { clientY: 3 })
+      expect(row(0).classes()).toContain('drop-before')
+      await row(0).trigger('drop')
+      expect(names()).toEqual(['C', 'A', 'B'])
+    })
+
+    it('dropping a row next to itself changes nothing', async () => {
+      const { store, names, row } = setup()
+      const before = store.revision
+      await row(1).get('[data-testid="section-handle"]').trigger('dragstart')
+      placeRow(row(0).element, 0)
+      await row(0).trigger('dragover', { clientY: 15 }) // lower half: after A == where B already is
+      await row(0).trigger('drop')
+      expect(names()).toEqual(['A', 'B', 'C'])
+      expect(store.revision).toBe(before)
+    })
+
+    it('clears the drop indicator on dragleave and a cancelled drag', async () => {
+      const { names, row } = setup()
+      await row(0).get('[data-testid="section-handle"]').trigger('dragstart')
+      placeRow(row(1).element, 20)
+      await row(1).trigger('dragover', { clientY: 22 })
+      expect(row(1).classes()).toContain('drop-before')
+      // Moving between cells of the same row bubbles a dragleave too; keep the indicator.
+      await row(1).trigger('dragleave', { relatedTarget: row(1).get('[data-testid="section-name"]').element })
+      expect(row(1).classes()).toContain('drop-before')
+      await row(1).trigger('dragleave', { relatedTarget: row(2).element })
+      expect(row(1).classes()).not.toContain('drop-before')
+      await row(1).trigger('dragover', { clientY: 22 })
+      await row(1).trigger('dragleave')
+      expect(row(1).classes()).not.toContain('drop-before')
+      await row(1).trigger('dragover', { clientY: 22 })
+      await row(0).trigger('dragend')
+      expect(row(0).classes()).not.toContain('dragging')
+      expect(row(1).classes()).not.toContain('drop-before')
+      expect(names()).toEqual(['A', 'B', 'C'])
+    })
+
+    it('ignores dragover and drop events that are not a section drag', async () => {
+      const { names, row } = setup()
+      placeRow(row(1).element, 20)
+      await row(1).trigger('dragover', { clientY: 22 })
+      expect(row(1).classes()).not.toContain('drop-before')
+      await row(1).trigger('drop')
+      expect(names()).toEqual(['A', 'B', 'C'])
+    })
+
+    it('moves a section with the arrow keys on its handle', async () => {
+      const { names, row } = setup()
+      const handle = () => row(0).get('[data-testid="section-handle"]')
+      await handle().trigger('keydown', { key: 'ArrowDown' })
+      expect(names()).toEqual(['B', 'A', 'C'])
+      await row(1).get('[data-testid="section-handle"]').trigger('keydown', { key: 'ArrowUp' })
+      expect(names()).toEqual(['A', 'B', 'C'])
+      await handle().trigger('keydown', { key: 'ArrowUp' })
+      await handle().trigger('keydown', { key: 'Enter' })
+      expect(names()).toEqual(['A', 'B', 'C'])
+    })
+  })
+
   it('shows an empty state', () => {
     const store = useSongStore()
     store.removeSection(store.song.sections[0]!.id)

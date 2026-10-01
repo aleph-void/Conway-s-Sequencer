@@ -18,7 +18,8 @@ backend, and songs autosave to local storage.
   (output 1 = C2 / note 36 by default, as the module expects).
 - **Sections** with their own tempo, time signature, bar count and step
   resolution. Leave a section's tempo blank and it inherits the previous
-  section's tempo.
+  section's tempo. Reorder sections by dragging the ⋮⋮ grip (or focus it and
+  press ↑/↓), and duplicate one, notes included, with ⧉.
 - **Draw gates** by clicking or click-dragging across the grid; Enter/Space
   toggles the focused cell for keyboard users.
 - **Gates follow the grid.** A gate goes high for the whole of every step it is

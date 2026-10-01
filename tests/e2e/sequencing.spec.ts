@@ -30,6 +30,52 @@ test.describe('sections', () => {
 })
 
 test.describe('drawing gates', () => {
+  test('reorders sections by dragging their handles and duplicates them', async ({ midiPage: page }) => {
+    const rows = page.getByTestId('sections-table').locator('tbody tr')
+    await page.getByTestId('add-section').click()
+    await page.getByTestId('add-section').click()
+    await rows.nth(1).getByTestId('section-name').fill('B')
+    await rows.nth(1).getByTestId('section-name').press('Tab')
+    await rows.nth(2).getByTestId('section-name').fill('C')
+    await rows.nth(2).getByTestId('section-name').press('Tab')
+    const names = () => rows.locator('[data-testid="section-name"]').evaluateAll((els) => els.map((el) => (el as HTMLInputElement).value))
+    expect(await names()).toEqual(['A', 'B', 'C'])
+
+    // Give A a gate so the grid proves the section itself moved, not just its name.
+    await page.getByTestId('cell-0-0-0').click()
+
+    // Drag A's handle to the lower half of C's row: A lands last.
+    const handle = rows.nth(0).getByTestId('section-handle')
+    const target = (await rows.nth(2).boundingBox())!
+    const grip = (await handle.boundingBox())!
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2 + 10, { steps: 3 })
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height * 0.8, { steps: 10 })
+    // One more nudge so the browser delivers a dragover at the final position.
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height * 0.8 + 1)
+    await expect(rows.nth(2)).toHaveClass(/drop-after/)
+    await page.mouse.up()
+    expect(await names()).toEqual(['B', 'C', 'A'])
+    await expect(page.getByTestId('grid-section-2')).toContainText('A')
+    await expect(page.getByTestId('cell-0-2-0')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('cell-0-0-0')).toHaveAttribute('aria-checked', 'false')
+    // Nothing is left in a drag state.
+    await expect(rows.nth(2)).not.toHaveClass(/dragging|drop-/)
+
+    // Duplicate C: the copy lands right after it with the same settings and notes.
+    await page.getByTestId('cell-0-1-5').click()
+    await rows.nth(1).getByTestId('section-duplicate').click()
+    expect(await names()).toEqual(['B', 'C', 'C copy', 'A'])
+    await expect(page.getByTestId('cell-0-1-5')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('cell-0-2-5')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('cell-0-3-0')).toHaveAttribute('aria-checked', 'true')
+
+    // The new order survives a reload.
+    await page.reload()
+    expect(await names()).toEqual(['B', 'C', 'C copy', 'A'])
+  })
+
   test('click toggles, drag paints, and the song survives a reload', async ({ midiPage: page }) => {
     const cell = (c: number, s: number) => page.getByTestId(`cell-${c}-0-${s}`)
     await cell(0, 0).click()

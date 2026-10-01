@@ -1,9 +1,94 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { MAX_BARS, MAX_TEMPO, MIN_BARS, MIN_TEMPO, SUBDIVISIONS, TIME_SIGNATURE_UNITS, type Section } from '../core/song'
 import { formatDuration } from '../core/timing'
 import { useSongStore } from '../stores/song'
 
 const store = useSongStore()
+
+// ---- drag-and-drop reordering ---------------------------------------------
+// Only the grip is draggable, so selecting text in the name input or dragging
+// a number spinner never starts a row drag. Native HTML5 drag events do the
+// rest; the drop target is the gap above or below the hovered row, whichever
+// half the pointer is in.
+type DropSide = 'before' | 'after'
+interface DropTarget {
+  index: number
+  side: DropSide
+}
+
+/** Section currently being dragged. */
+const draggingId = ref<string | null>(null)
+const dropTarget = ref<DropTarget | null>(null)
+
+function onDragStart(section: Section, event: DragEvent) {
+  draggingId.value = section.id
+  const dt = event.dataTransfer
+  if (dt) {
+    dt.effectAllowed = 'move'
+    // Firefox refuses to start a drag without data.
+    dt.setData('text/plain', section.id)
+    // Show the whole row under the pointer rather than just the grip.
+    const row = event.currentTarget as HTMLElement | null
+    if (row && typeof dt.setDragImage === 'function') dt.setDragImage(row, 12, row.offsetHeight / 2)
+  }
+}
+
+function onDragOver(index: number, event: DragEvent) {
+  if (!draggingId.value) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  const row = event.currentTarget as HTMLElement | null
+  const rect = row?.getBoundingClientRect()
+  const side: DropSide = rect && Number.isFinite(event.clientY) && event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+  const next = { index, side }
+  if (dropTarget.value?.index !== next.index || dropTarget.value?.side !== next.side) dropTarget.value = next
+}
+
+function onDragLeave(index: number, event: DragEvent) {
+  // dragleave bubbles up from every cell the pointer crosses; only a move
+  // out of the row itself should clear the indicator.
+  const row = event.currentTarget as HTMLElement | null
+  const next = event.relatedTarget
+  if (row && next instanceof Node && row.contains(next)) return
+  if (dropTarget.value?.index === index) dropTarget.value = null
+}
+
+function onDrop(event: DragEvent) {
+  event.preventDefault()
+  const id = draggingId.value
+  const target = dropTarget.value
+  if (id && target) {
+    const sections = store.song.sections
+    const from = sections.findIndex((s) => s.id === id)
+    const insertAt = target.side === 'before' ? target.index : target.index + 1
+    // The dragged row leaves the list before it is re-inserted.
+    const to = insertAt > from ? insertAt - 1 : insertAt
+    store.moveSectionTo(id, to)
+  }
+  endDrag()
+}
+
+function endDrag() {
+  draggingId.value = null
+  dropTarget.value = null
+}
+
+function dropClass(index: number): Record<string, boolean> {
+  const target = dropTarget.value
+  return {
+    'drop-before': target?.index === index && target.side === 'before',
+    'drop-after': target?.index === index && target.side === 'after',
+  }
+}
+
+/** Arrow keys on the handle nudge the section, as a keyboard alternative to dragging. */
+function onHandleKey(section: Section, event: KeyboardEvent) {
+  const delta = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0
+  if (!delta) return
+  event.preventDefault()
+  store.moveSection(section.id, delta)
+}
 
 function num(event: Event): number {
   return Number((event.target as HTMLInputElement).value)
@@ -44,6 +129,7 @@ function remove(section: Section) {
     <table v-else class="sections" data-testid="sections-table">
       <thead>
         <tr>
+          <th class="sr-only">Reorder</th>
           <th>#</th>
           <th>Name</th>
           <th>Tempo</th>
@@ -55,7 +141,30 @@ function remove(section: Section) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(section, index) in store.song.sections" :key="section.id" :data-testid="`section-row-${index}`">
+        <tr
+          v-for="(section, index) in store.song.sections"
+          :key="section.id"
+          :class="[{ dragging: draggingId === section.id }, dropClass(index)]"
+          :data-testid="`section-row-${index}`"
+          @dragstart="onDragStart(section, $event)"
+          @dragover="onDragOver(index, $event)"
+          @dragleave="onDragLeave(index, $event)"
+          @drop="onDrop($event)"
+          @dragend="endDrag"
+        >
+          <td class="handle-cell">
+            <button
+              class="icon handle"
+              type="button"
+              draggable="true"
+              title="Drag to reorder (↑/↓ keys also move)"
+              :aria-label="`Reorder section ${section.name}`"
+              data-testid="section-handle"
+              @keydown="onHandleKey(section, $event)"
+            >
+              ⋮⋮
+            </button>
+          </td>
           <td class="mono muted">{{ index + 1 }}</td>
           <td>
             <input
@@ -187,5 +296,41 @@ function remove(section: Section) {
 .actions {
   display: flex;
   gap: 4px;
+}
+
+.handle-cell {
+  width: 1px;
+  padding-right: 0;
+}
+
+.handle {
+  cursor: grab;
+  color: var(--text-muted);
+  letter-spacing: -0.3em;
+  padding-right: 0.45em;
+  touch-action: none;
+  user-select: none;
+}
+
+.handle:hover {
+  color: var(--text);
+}
+
+.handle:active,
+tr.dragging .handle {
+  cursor: grabbing;
+}
+
+tr.dragging {
+  opacity: 0.4;
+}
+
+/* Insertion line between rows while dragging. */
+tr.drop-before td {
+  box-shadow: inset 0 2px 0 var(--accent-light);
+}
+
+tr.drop-after td {
+  box-shadow: inset 0 -2px 0 var(--accent-light);
 }
 </style>
