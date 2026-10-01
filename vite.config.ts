@@ -2,8 +2,8 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// BASE_PATH is set by the GitHub Pages deploy workflow to "/<repo-name>/".
-// Locally it defaults to "/" so `npm run dev` and `npm run preview` just work.
+// The site is served from the root of a custom domain, so base defaults to "/".
+// BASE_PATH remains overridable for serving from a sub-path if that changes.
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/',
   plugins: [vue()],
