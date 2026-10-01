@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { songFileName } from '../core/serialization'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
@@ -20,6 +20,32 @@ function readText(file: File): Promise<string> {
 }
 const message = ref<string | null>(null)
 const error = ref<string | null>(null)
+
+function formatTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+/** Live autosave status line, driven by the store's save state. */
+const autosave = computed(() => {
+  switch (store.saveState) {
+    case 'unavailable':
+      return { text: 'Autosave is unavailable in this browser. Export to keep a copy.', tone: 'status-warn' }
+    case 'pending':
+      return { text: 'Saving…', tone: 'muted' }
+    case 'saved':
+      return {
+        text: store.lastSavedAt === null ? 'Autosaved.' : `Autosaved at ${formatTime(store.lastSavedAt)}.`,
+        tone: 'status-ok',
+      }
+    case 'error':
+      return {
+        text: 'Autosave failed: browser storage is full or disabled. Export to keep a copy.',
+        tone: 'status-bad',
+      }
+    default:
+      return { text: 'Songs autosave in this browser. Export to keep a copy.', tone: 'muted' }
+  }
+})
 
 function exportSong() {
   const json = store.exportJson()
@@ -79,7 +105,16 @@ function newSong() {
     </div>
     <p v-if="error" class="status-bad msg" data-testid="io-error">{{ error }}</p>
     <p v-else-if="message" class="muted msg" data-testid="io-message">{{ message }}</p>
-    <p v-else class="muted msg">Songs autosave in this browser. Export to keep a copy.</p>
+    <p
+      class="msg"
+      :class="autosave.tone"
+      role="status"
+      aria-live="polite"
+      data-testid="autosave-status"
+      :data-save-state="store.saveState"
+    >
+      {{ autosave.text }}
+    </p>
   </section>
 </template>
 

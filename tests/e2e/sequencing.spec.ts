@@ -50,6 +50,8 @@ test.describe('drawing gates', () => {
 
     await page.getByTestId('channel-name').first().fill('Kick')
     await page.getByTestId('channel-name').first().press('Tab')
+    await expect(page.getByTestId('autosave-status')).toContainText('Autosaved at')
+    await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
     await expect
       .poll(() => page.evaluate(() => localStorage.getItem('conways-sequencer:song') ?? ''))
       .toContain('"Kick"')
@@ -57,6 +59,26 @@ test.describe('drawing gates', () => {
     await page.reload()
     for (const s of [4, 5, 6, 7]) await expect(cell(1, s)).toHaveAttribute('aria-checked', 'true')
     await expect(page.getByTestId('channel-name').first()).toHaveValue('Kick')
+    await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'idle')
+  })
+
+  test('autosaves every kind of edit, including settings and sections', async ({ midiPage: page }) => {
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('conways-sequencer:song') ?? '{}'))
+    await page.getByTestId('song-name').fill('Everything')
+    await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
+    await expect.poll(async () => (await stored()).name).toBe('Everything')
+
+    await page.getByTestId('velocity').fill('77')
+    await page.getByTestId('velocity').press('Tab')
+    await expect.poll(async () => (await stored()).settings?.velocity).toBe(77)
+
+    await page.getByTestId('add-section').click()
+    await expect.poll(async () => (await stored()).sections?.length).toBe(2)
+
+    await page.getByTestId('cell-5-1-2').click()
+    await expect.poll(async () => (await stored()).sections?.[1]?.steps).toEqual({
+      [(await stored()).channels[5].id]: [2],
+    })
   })
 
   test('supports up to 64 channels', async ({ midiPage: page }) => {

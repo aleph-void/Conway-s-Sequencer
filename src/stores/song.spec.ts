@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { MAX_CHANNELS, createSong } from '../core/song'
-import { STORAGE_KEY, loadInitialSong, useSongStore } from './song'
+import { AUTOSAVE_DEBOUNCE_MS, STORAGE_KEY, loadInitialSong, useSongStore } from './song'
 
 describe('useSongStore', () => {
   beforeEach(() => {
@@ -231,6 +231,47 @@ describe('useSongStore', () => {
       expect(localStorage.getItem(STORAGE_KEY)).toContain('"Flushed"')
       window.dispatchEvent(new Event('pagehide'))
       store.save()
+    })
+
+    it('reports pending, then saved with a timestamp, after a GUI edit', async () => {
+      vi.useFakeTimers()
+      const start = new Date('2026-10-01T12:34:56Z').getTime()
+      vi.setSystemTime(start)
+      const store = useSongStore()
+      expect(store.saveState).toBe('idle')
+      expect(store.lastSavedAt).toBeNull()
+      const sectionId = store.song.sections[0]!.id
+      const channelId = store.song.channels[0]!.id
+      store.toggleStep(sectionId, channelId, 3)
+      await nextTick()
+      expect(store.saveState).toBe('pending')
+      // Further edits inside the debounce window keep it pending and write once.
+      store.toggleStep(sectionId, channelId, 4)
+      await vi.advanceTimersByTimeAsync(100)
+      expect(store.saveState).toBe('pending')
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+      await vi.advanceTimersByTimeAsync(300)
+      expect(store.saveState).toBe('saved')
+      // The write lands one debounce after the last edit; fake timers advance the clock with it.
+      expect(store.lastSavedAt).toBe(start + AUTOSAVE_DEBOUNCE_MS)
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).sections[0].steps[channelId]).toEqual([3, 4])
+    })
+
+    it('reports an error when storage rejects the write', async () => {
+      vi.useFakeTimers()
+      const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('QuotaExceededError')
+      })
+      const store = useSongStore()
+      store.rename('Too big')
+      await vi.advanceTimersByTimeAsync(300)
+      expect(store.saveState).toBe('error')
+      expect(store.lastSavedAt).toBeNull()
+      setItem.mockRestore()
+      store.rename('Fits now')
+      await vi.advanceTimersByTimeAsync(300)
+      expect(store.saveState).toBe('saved')
+      expect(localStorage.getItem(STORAGE_KEY)).toContain('"Fits now"')
     })
 
     it('loads the autosaved song and falls back when corrupt', () => {
