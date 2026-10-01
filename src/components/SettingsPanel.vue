@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { noteName } from '../core/midi'
 import { MAX_CHANNELS } from '../core/song'
-import { PLAY_GATE_NOTE } from '../core/midi'
+import { CLOCK_NOTE, CLOCK_PULSES_PER_BEAT, PLAY_GATE_NOTE } from '../core/midi'
 import { useSongStore } from '../stores/song'
 
 const store = useSongStore()
@@ -54,8 +54,10 @@ function num(event: Event): number {
     <p class="muted note">
       Output 1 = {{ noteName(settings.baseNote) }} ({{ settings.baseNote }}), output {{ MAX_CHANNELS }} =
       {{ noteName(settings.baseNote + MAX_CHANNELS - 1) }} ({{ settings.baseNote + MAX_CHANNELS - 1 }}). A gate stays
-      high for every step it is drawn on and only drops at the next empty step. The play gate on
-      {{ noteName(PLAY_GATE_NOTE) }} ({{ PLAY_GATE_NOTE }}) is held high while the song is playing.
+      high for every step it is drawn on and only drops at the next empty step. While the song is playing, the
+      x{{ CLOCK_PULSES_PER_BEAT }} clock on {{ noteName(CLOCK_NOTE) }} ({{ CLOCK_NOTE }}) pulses
+      {{ CLOCK_PULSES_PER_BEAT }} times per beat and the play gate on {{ noteName(PLAY_GATE_NOTE) }}
+      ({{ PLAY_GATE_NOTE }}) is held high.
     </p>
   </section>
 </template>

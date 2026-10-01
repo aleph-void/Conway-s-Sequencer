@@ -43,7 +43,7 @@ describe('useTransportStore', () => {
     expect(out.sent[1]).toEqual([[0x90, 36, 100], 0])
     await vi.advanceTimersByTimeAsync(600)
     // Each gate holds for its whole 125 ms step, minus the 2 ms gap before the next step.
-    expect(out.sent.slice(1).map((s) => s[1])).toEqual([0, 123, 500, 623])
+    expect(out.sent.filter((s) => s[0][1] === 36).map((s) => s[1])).toEqual([0, 123, 500, 623])
     expect(transport.positionSeconds).toBeCloseTo(0.6, 1)
     expect(transport.currentStep).toBe(4)
     expect(transport.position?.sectionIndex).toBe(0)
@@ -53,6 +53,24 @@ describe('useTransportStore', () => {
     expect(transport.positionSeconds).toBe(0)
     expect(transport.currentStep).toBe(-1)
     expect(out.sent.at(-1)).toEqual([[0x80, 100, 0], 600])
+  })
+
+  it('pulses the x16 clock on note 99 sixteen times per beat while playing', async () => {
+    const transport = useTransportStore()
+    transport.play()
+    await vi.advanceTimersByTimeAsync(1000)
+    const ons = out.sent.filter((s) => s[0][0] === 0x90 && s[0][1] === 99).map((s) => s[1]!)
+    const offs = out.sent.filter((s) => s[0][0] === 0x80 && s[0][1] === 99).map((s) => s[1]!)
+    // 120 BPM: a beat is 500 ms, so a pulse every 31.25 ms, high for half of that.
+    expect(ons.filter((t) => t < 500)).toHaveLength(16)
+    expect(ons.slice(0, 3)).toEqual([0, 31.25, 62.5])
+    expect(ons[16]).toBe(500)
+    expect(offs.slice(0, 2)).toEqual([15.625, 46.875])
+    expect(out.sent[0]).toEqual([[0x90, 100, 100], 0]) // the play gate still goes first
+    transport.stop()
+    // Nothing on the clock note is sent after stop, apart from releasing a pulse that was high.
+    const after = out.sent.slice(out.sent.findIndex((s) => s[0][1] === 100 && s[0][0] === 0x80))
+    expect(after.filter((s) => s[0][1] === 99 && s[0][0] === 0x90)).toHaveLength(0)
   })
 
   it('holds the play gate on note 100 while playing and releases it on stop', () => {
@@ -141,12 +159,14 @@ describe('useTransportStore', () => {
     transport.play()
     transport.panic()
     expect(transport.playing).toBe(false)
-    // Stop releases the play gate, then the flood covers 63 outputs plus the play gate again.
-    const offs = out.sent.filter((s) => s[0][0] === 0x80).map((s) => s[0])
-    expect(offs).toHaveLength(1 + 64)
-    expect(offs[0]).toEqual([0x80, 100, 0])
-    expect(offs[63]).toEqual([0x80, 98, 0])
-    expect(offs[64]).toEqual([0x80, 100, 0])
+    // Stop releases the play gate, then the flood covers 62 outputs, the clock and the play gate again.
+    const flood = out.sent.slice(-65).map((s) => s[0])
+    expect(out.sent.at(-66)![0]).toEqual([0x80, 100, 0])
+    expect(flood[0]).toEqual([0x80, 36, 0])
+    expect(flood[61]).toEqual([0x80, 97, 0])
+    expect(flood[62]).toEqual([0x80, 99, 0])
+    expect(flood[63]).toEqual([0x80, 100, 0])
+    expect(flood[64]).toEqual([0xb0, 123, 0])
   })
 
   it('reacts to loop setting changes while playing', async () => {

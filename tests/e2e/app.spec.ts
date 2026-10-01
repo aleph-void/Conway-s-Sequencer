@@ -6,7 +6,7 @@ test.describe('shell', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText("Conway's Sequencer")
     await expect(page.locator('a[href="https://alephvoid.com"]').first()).toBeVisible()
     await expect(page.getByTestId('brand-logo').first()).toBeVisible()
-    await expect(page.getByTestId('channel-count')).toContainText('8 / 63 channels')
+    await expect(page.getByTestId('channel-count')).toContainText('8 / 62 channels')
     await expect(page.getByTestId('sections-table').locator('tbody tr')).toHaveCount(1)
   })
 
