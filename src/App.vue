@@ -97,9 +97,7 @@ const year = new Date().getFullYear()
   gap: 12px;
   /* Extra room on the left for the Song browser's tab. */
   padding: 12px 16px 12px 40px;
-  max-width: 1600px;
   width: 100%;
-  margin: 0 auto;
 }
 
 .toolbar {
