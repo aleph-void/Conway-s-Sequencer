@@ -1,4 +1,4 @@
-import { MAX_CHANNELS, clamp } from './song'
+import { DEFAULT_PLAY_GATE_NOTE, MAX_CHANNELS, clamp } from './song'
 
 export const NOTE_OFF = 0x80
 export const NOTE_ON = 0x90
@@ -6,10 +6,11 @@ export const CONTROL_CHANGE = 0xb0
 export const CC_ALL_NOTES_OFF = 123
 export const CC_ALL_SOUND_OFF = 120
 /**
- * Fixed note for the play gate: held high (note-on) for as long as the song is playing and
- * released (note-off) the moment it stops. Independent of the base note setting.
+ * The play gate is a note held high (note-on) for as long as the song is playing and released
+ * (note-off) the moment it stops or pauses. Which note is a song setting (`playGateNote`); this is
+ * the default, the module's 64th output.
  */
-export const PLAY_GATE_NOTE = 99
+export { DEFAULT_PLAY_GATE_NOTE }
 /**
  * Fixed note for the x16 clock: pulsed CLOCK_PULSES_PER_BEAT times per beat for as long as
  * the song is playing, so the module gets a steady clock next to the sequenced gates.
@@ -56,14 +57,14 @@ export function noteName(note: number): string {
 }
 
 /** Every note-off the module could possibly need (outputs, the clock and the play gate), used for "panic" / stop. */
-export function allOutputsOff(channel: number, baseNote: number): number[][] {
+export function allOutputsOff(channel: number, baseNote: number, playGateNote = DEFAULT_PLAY_GATE_NOTE): number[][] {
   const messages: number[][] = []
   for (let output = 0; output < MAX_CHANNELS; output++) {
     const note = baseNote + output
     if (note >= 0 && note <= 127) messages.push(noteOff(channel, note))
   }
   messages.push(noteOff(channel, CLOCK_NOTE))
-  messages.push(noteOff(channel, PLAY_GATE_NOTE))
+  messages.push(noteOff(channel, playGateNote))
   messages.push(allNotesOff(channel))
   return messages
 }

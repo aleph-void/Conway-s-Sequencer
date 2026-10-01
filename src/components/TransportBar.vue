@@ -14,9 +14,19 @@ const loop = computed({
   set: (value: boolean) => song.updateSettings({ loop: value }),
 })
 
+const playLabel = computed(() => {
+  if (transport.playing) return '❙❙ Pause'
+  return transport.paused ? '▶ Resume' : '▶ Play'
+})
+
+const playTitle = computed(() => {
+  if (transport.playing) return 'Pause where the cursor is (Space)'
+  return transport.paused ? 'Resume from the cursor (Space)' : 'Play from the start (Space)'
+})
+
 const sectionLabel = computed(() => {
   const pos = transport.position
-  if (!transport.playing || !pos) return '—'
+  if ((!transport.playing && !transport.paused) || !pos) return '—'
   const section = song.song.sections[pos.sectionIndex]
   const timing = song.timeline[pos.sectionIndex]
   if (!section || !timing) return '—'
@@ -49,10 +59,27 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         class="primary play"
         :aria-pressed="transport.playing"
         :disabled="song.duration <= 0"
+        :title="playTitle"
         data-testid="play"
         @click="transport.toggle()"
       >
-        {{ transport.playing ? '■ Stop' : '▶ Play' }}
+        {{ playLabel }}
+      </button>
+      <button
+        title="Stop and return the cursor to the start"
+        :disabled="!transport.playing && !transport.paused"
+        data-testid="stop"
+        @click="transport.stop()"
+      >
+        ■ Stop
+      </button>
+      <button
+        title="Return the cursor to the start; playback, if running, restarts from there"
+        :disabled="!transport.playing && !transport.paused"
+        data-testid="reset"
+        @click="transport.reset()"
+      >
+        ⏮ Reset
       </button>
       <button title="Stop and send note-off to every output (Esc)" data-testid="panic" @click="transport.panic()">
         Panic
@@ -69,7 +96,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <p class="meta">
       <span data-testid="section-readout">{{ sectionLabel }}</span>
       <span v-if="!midi.isConnected" class="status-warn"> · no MIDI output selected, playback is silent</span>
-      <span class="muted hint"> · Space = play/stop, Esc = panic</span>
+      <span class="muted hint"> · Space = play/pause, Esc = panic</span>
     </p>
   </section>
 </template>
@@ -87,7 +114,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 
 .play {
-  min-width: 96px;
+  min-width: 108px;
 }
 
 .check {

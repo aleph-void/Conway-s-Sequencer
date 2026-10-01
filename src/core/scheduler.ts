@@ -109,16 +109,43 @@ export class Scheduler {
   }
 
   start(fromSeconds = 0): void {
-    if (this.running) this.stop(false)
+    let anchor = this.deps.now()
+    if (this.running) {
+      // Events already handed to the output stay queued, so the new pass begins after them.
+      anchor = Math.max(anchor, this.lastSentAt)
+      this.stop(false)
+    }
     if (this.duration <= 0) return
     const from = Math.max(0, Math.min(fromSeconds, this.duration))
     this.running = true
     this.loopCount = 0
-    this.startMs = this.deps.now() - from * 1000
+    this.startMs = anchor - from * 1000
     this.lastSentAt = Number.NEGATIVE_INFINITY
     this.index = this.events.findIndex((e) => e.time >= from)
     if (this.index < 0) this.index = this.events.length
+    this.raiseSpanningGates(from)
     this.tick()
+  }
+
+  /**
+   * When starting mid-song (resuming from a pause, say), a gate whose note-on lies before
+   * `from` and whose note-off lies after it is still meant to be high, so its note-on is
+   * re-sent at the start position. Only events of the current pass are considered.
+   */
+  private raiseSpanningGates(from: number): void {
+    const open = new Map<number, MidiEvent>()
+    for (let i = 0; i < this.index; i++) {
+      const event = this.events[i]!
+      if (event.kind === 'on') open.set(event.note, event)
+      else open.delete(event.note)
+    }
+    if (open.size === 0) return
+    const at = this.startMs + from * 1000
+    for (const event of open.values()) {
+      this.deps.send(event.data, at)
+      this.lastSentAt = at
+      this.sounding.set(event.note, offFor(event))
+    }
   }
 
   stop(notify = true): void {
@@ -128,8 +155,10 @@ export class Scheduler {
       this.deps.clearTimeout(this.timer)
       this.timer = null
     }
-    const now = this.deps.now()
-    for (const data of this.sounding.values()) this.deps.send(data, now)
+    // Note-offs go out after the last event already handed to the output, so a note-on that is
+    // still queued inside the look-ahead window cannot outlive its note-off and stick high.
+    const at = Math.max(this.deps.now(), this.lastSentAt)
+    for (const data of this.sounding.values()) this.deps.send(data, at)
     this.sounding.clear()
     if (notify) this.deps.onStop?.()
   }

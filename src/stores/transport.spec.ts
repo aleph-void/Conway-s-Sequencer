@@ -96,6 +96,17 @@ describe('useTransportStore', () => {
     expect(out.sent.at(-1)![0]).toEqual([0x84, 99, 0])
   })
 
+  it('sends the play gate on the configured note and releases that same note', () => {
+    const song = useSongStore()
+    song.updateSettings({ playGateNote: 100 })
+    const transport = useTransportStore()
+    transport.play()
+    expect(out.sent[0]![0]).toEqual([0x90, 100, 100])
+    song.updateSettings({ playGateNote: 99 })
+    transport.stop()
+    expect(out.sent.at(-1)![0]).toEqual([0x80, 100, 0])
+  })
+
   it('releases the play gate when a non-looping song reaches its end', async () => {
     const song = useSongStore()
     song.updateSettings({ loop: false })
@@ -115,12 +126,136 @@ describe('useTransportStore', () => {
     expect(out.sent).toHaveLength(0)
   })
 
-  it('toggle starts and stops', () => {
+  it('toggle plays and pauses', async () => {
     const transport = useTransportStore()
     transport.toggle()
     expect(transport.playing).toBe(true)
+    await vi.advanceTimersByTimeAsync(300)
     transport.toggle()
     expect(transport.playing).toBe(false)
+    expect(transport.paused).toBe(true)
+    expect(transport.positionSeconds).toBeCloseTo(0.3, 1)
+  })
+
+  it('pauses where the cursor is, keeps the readout there and resumes from it', async () => {
+    const song = useSongStore()
+    const transport = useTransportStore()
+    const sec = song.song.sections[0]!
+    const ch = song.song.channels[0]!.id
+    song.toggleStep(sec.id, ch, 0)
+    song.toggleStep(sec.id, ch, 8) // 1.0 s in
+    transport.play()
+    await vi.advanceTimersByTimeAsync(600)
+
+    transport.pause()
+    expect(transport.playing).toBe(false)
+    expect(transport.paused).toBe(true)
+    expect(transport.positionSeconds).toBeCloseTo(0.6, 2)
+    expect(transport.currentStep).toBe(4)
+    expect(transport.position?.sectionIndex).toBe(0)
+    // Pausing drops the gate (after the note-off of any clock pulse that was high)...
+    expect(out.sent.at(-1)).toEqual([[0x80, 99, 0], 600])
+    const sentBefore = out.sent.length
+    // ...and nothing more goes out while paused.
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(out.sent).toHaveLength(sentBefore)
+    expect(transport.positionSeconds).toBeCloseTo(0.6, 2)
+
+    transport.resume()
+    expect(transport.playing).toBe(true)
+    expect(transport.paused).toBe(false)
+    // The gate goes high again; the step at 0 s is not replayed, the one at 1.0 s follows 400 ms later.
+    expect(out.sent[sentBefore]).toEqual([[0x90, 99, 100], 1600])
+    await vi.advanceTimersByTimeAsync(500)
+    const ons = out.sent.slice(sentBefore + 1).filter((s) => s[0][0] === 0x90 && s[0][1] === 36)
+    expect(ons).toEqual([[[0x90, 36, 100], 2000]])
+    expect(transport.positionSeconds).toBeCloseTo(1.1, 1)
+  })
+
+  it('resumes a gate that was held across the pause point', async () => {
+    const song = useSongStore()
+    const transport = useTransportStore()
+    const sec = song.song.sections[0]!
+    const ch = song.song.channels[0]!.id
+    for (const step of [0, 1, 2, 3, 4, 5, 6, 7]) song.toggleStep(sec.id, ch, step) // one gate for the whole bar
+    transport.play()
+    await vi.advanceTimersByTimeAsync(500)
+    transport.pause()
+    const gates = () => out.sent.filter((s) => s[0][1] === 36 || s[0][1] === 99)
+    // The held gate is dropped on pause, then the play gate is released.
+    expect(gates().slice(-2).map((s) => s[0])).toEqual([[0x80, 36, 0], [0x80, 99, 0]])
+    transport.resume()
+    // ...and raised again on resume, right after the play gate.
+    expect(gates().slice(-2)).toEqual([[[0x90, 99, 100], 500], [[0x90, 36, 100], 500]])
+  })
+
+  it('reset returns the cursor to the start and keeps playing', async () => {
+    const song = useSongStore()
+    const transport = useTransportStore()
+    const sec = song.song.sections[0]!
+    const ch = song.song.channels[0]!.id
+    song.toggleStep(sec.id, ch, 0)
+    transport.play()
+    await vi.advanceTimersByTimeAsync(700)
+    expect(transport.currentStep).toBe(5)
+    const gates = () => out.sent.filter((s) => s[0][1] === 99).length
+    const before = gates()
+
+    transport.reset()
+    expect(transport.playing).toBe(true)
+    expect(transport.positionSeconds).toBe(0)
+    expect(transport.currentStep).toBe(0)
+    // The first step plays again, without the gate being released and re-raised. The new pass is
+    // anchored after the clock pulses already handed to the output (up to 120 ms ahead).
+    const restart = out.sent.filter((s) => s[0][1] === 36).at(-1)!
+    expect(restart[0]).toEqual([0x90, 36, 100])
+    expect(restart[1]).toBeGreaterThanOrEqual(700)
+    expect(restart[1]).toBeLessThanOrEqual(820)
+    expect(gates()).toBe(before)
+    await vi.advanceTimersByTimeAsync(300)
+    // The readout is refreshed once per (16 ms) frame, so it may lag the clock by up to one frame.
+    const expected = (1000 - restart[1]!) / 1000
+    expect(transport.positionSeconds).toBeGreaterThan(expected - 0.02)
+    expect(transport.positionSeconds).toBeLessThanOrEqual(expected)
+  })
+
+  it('reset while paused returns to the stopped state', async () => {
+    const transport = useTransportStore()
+    transport.play()
+    await vi.advanceTimersByTimeAsync(400)
+    transport.pause()
+    expect(transport.paused).toBe(true)
+    transport.reset()
+    expect(transport.paused).toBe(false)
+    expect(transport.playing).toBe(false)
+    expect(transport.positionSeconds).toBe(0)
+    expect(transport.currentStep).toBe(-1)
+    // Play now starts from the top again.
+    transport.play()
+    expect(transport.positionSeconds).toBe(0)
+  })
+
+  it('stop while paused clears the paused position', async () => {
+    const transport = useTransportStore()
+    transport.play()
+    await vi.advanceTimersByTimeAsync(400)
+    transport.pause()
+    transport.stop()
+    expect(transport.paused).toBe(false)
+    expect(transport.positionSeconds).toBe(0)
+  })
+
+  it('starts over when the song became shorter than the paused position', async () => {
+    const song = useSongStore()
+    const transport = useTransportStore()
+    transport.play()
+    await vi.advanceTimersByTimeAsync(5000)
+    transport.pause()
+    expect(transport.positionSeconds).toBeCloseTo(5, 1)
+    song.updateSection(song.song.sections[0]!.id, { bars: 1 }) // 2 s long now
+    transport.resume()
+    expect(transport.playing).toBe(true)
+    expect(transport.positionSeconds).toBe(0)
   })
 
   it('does nothing for a song with no sections', () => {

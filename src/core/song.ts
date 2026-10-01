@@ -6,9 +6,10 @@
  */
 
 /**
+/**
  * The Conway's Game module exposes 64 trigger/gate outputs. The last two are reserved for
- * the x16 clock and the play gate (see CLOCK_NOTE and PLAY_GATE_NOTE in core/midi.ts), so
- * songs get 62 sequenced channels.
+ * the x16 clock (CLOCK_NOTE in core/midi.ts) and the play gate (DEFAULT_PLAY_GATE_NOTE
+ * below), so songs get 62 sequenced channels.
  */
 export const MAX_CHANNELS = 62
 export const MIN_TEMPO = 20
@@ -20,6 +21,12 @@ export const SUBDIVISIONS = [1, 2, 3, 4, 6, 8] as const
 export const TIME_SIGNATURE_UNITS = [2, 4, 8, 16] as const
 /** The module responds to MIDI notes starting at C2 (36); output 1 = note 36. */
 export const DEFAULT_BASE_NOTE = 36
+/**
+ * Default note for the play gate: the module's 64th output. Its 64 outputs follow MIDI notes
+ * from the base note upwards, so with the default base note (36) the last one is note 99
+ * (the 63rd, note 98, carries the x16 clock).
+ */
+export const DEFAULT_PLAY_GATE_NOTE = DEFAULT_BASE_NOTE + MAX_CHANNELS + 1
 export const SONG_VERSION = 1 as const
 
 export type Subdivision = (typeof SUBDIVISIONS)[number]
@@ -62,6 +69,8 @@ export interface SongSettings {
   baseNote: number
   /** Note-on velocity 1..127. */
   velocity: number
+  /** MIDI note held on while the song is playing (0..127). */
+  playGateNote: number
   loop: boolean
 }
 
@@ -82,7 +91,7 @@ export function generateId(prefix = 'id'): string {
 }
 
 export function defaultSettings(): SongSettings {
-  return { midiChannel: 1, baseNote: DEFAULT_BASE_NOTE, velocity: 100, loop: true }
+  return { midiChannel: 1, baseNote: DEFAULT_BASE_NOTE, velocity: 100, playGateNote: DEFAULT_PLAY_GATE_NOTE, loop: true }
 }
 
 export function createChannel(output: number, overrides: Partial<Channel> = {}): Channel {

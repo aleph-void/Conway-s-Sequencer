@@ -12,7 +12,8 @@ iteration was built against, with what shipped and what is left.
 | Select the MIDI output in the GUI | `navigator.requestMIDIAccess({ sysex: false })`; outputs listed in a `<select>`, choice persisted, `statechange` tracked for hot-plug. |
 | Up to 62 channels | Hard cap `MAX_CHANNELS = 62`. A channel = one module output (shown 1-based). MIDI note = `baseNote + output`. The last two outputs are reserved for the x16 clock and the play gate. |
 | x16 clock | `CLOCK_NOTE = 98` is pulsed `CLOCK_PULSES_PER_BEAT = 16` times per beat while playing, compiled into the event list alongside the gates so it follows every section's tempo and time signature. Half-period pulses, never below the 2 ms retrigger gap. Independent of the base note; mute and solo do not affect it. |
-| Play gate | `PLAY_GATE_NOTE = 99` goes note-on when playback starts and note-off when it stops (manual stop, end of a non-looping song, or panic). Independent of the base note. |
+| Play gate | `settings.playGateNote` (default `DEFAULT_PLAY_GATE_NOTE = 99`, the module's 64th output) goes note-on when playback starts or resumes and note-off when it pauses or stops (manual stop, end of a non-looping song, or panic). Independent of the base note. |
+| Transport | `stores/transport.ts` has three states: stopped (cursor at 0), playing, paused (cursor kept, gate low). Pause stops the scheduler where it is; resume restarts it from the cursor and re-raises any gate that spans the resume point; reset returns the cursor to 0 and keeps playing if it was playing. |
 | Channel = binary on/off of a MIDI note → gate | Note-on at the start of an on-step, note-off at the next off-step: a gate is held for the whole step, and consecutive on-steps form one long gate. |
 | Sections with tempo, time signature, bars | `Section { tempo: number \| null, timeSignature {beats, unit}, bars, subdivision }`. `tempo: null` inherits from the previous section (first section falls back to 120). |
 | Draw "on" bars like a piano roll | Grid: rows = channels, columns = every step of every section. Click toggles, drag paints, keyboard toggles. |
@@ -25,6 +26,8 @@ iteration was built against, with what shipped and what is left.
 - 64 trigger/gate outputs, driven by MIDI notes starting at C2 (36). Public
   listings quote "C2 / note 36 to E7 / note 100"; 64 outputs from 36 end at 99,
   so the base note is a setting (default 36) in case a unit is offset by one.
+  In practice a unit does not react to note 100, so the play gate defaults to
+  note 99 (the 64th output) and is itself a setting.
 - Outputs can be set to trigger (fixed 20 ms pulse) or gate (follows the note).
   Gate length only matters in gate mode; in trigger mode any gate length works.
 - MIDI channel is not documented on the public pages, so it is a setting (default 1).

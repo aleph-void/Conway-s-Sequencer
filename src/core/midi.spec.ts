@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CLOCK_NOTE,
-  PLAY_GATE_NOTE,
+  DEFAULT_PLAY_GATE_NOTE,
   allNotesOff,
   allOutputsOff,
   isWebMidiSupported,
@@ -64,8 +64,14 @@ describe('allOutputsOff', () => {
     expect(msgs[0]).toEqual([0x80, 36, 0])
     expect(msgs[61]).toEqual([0x80, 97, 0])
     expect(msgs[62]).toEqual([0x80, CLOCK_NOTE, 0])
-    expect(msgs[63]).toEqual([0x80, PLAY_GATE_NOTE, 0])
+    expect(DEFAULT_PLAY_GATE_NOTE).toBe(99)
+    expect(msgs[63]).toEqual([0x80, 99, 0])
     expect(msgs[64]).toEqual([0xb0, 123, 0])
+  })
+
+  it('releases the play gate on the configured note', () => {
+    const msgs = allOutputsOff(1, 36, 100)
+    expect(msgs[63]).toEqual([0x80, 100, 0])
   })
 
   it('skips notes above 127', () => {
