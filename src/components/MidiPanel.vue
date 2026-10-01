@@ -39,8 +39,8 @@ const statusClass = computed(() => {
 </script>
 
 <template>
-  <section class="panel" aria-labelledby="midi-heading">
-    <h2 id="midi-heading">MIDI output</h2>
+  <section class="group" aria-labelledby="midi-heading">
+    <h2 id="midi-heading" class="sr-only">MIDI output</h2>
     <div class="row">
       <button
         v-if="midi.status !== 'ready'"
@@ -69,12 +69,34 @@ const statusClass = computed(() => {
 </template>
 
 <style scoped>
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.row {
+  align-items: center;
+}
+
 .status {
-  margin: 10px 0 0;
-  font-size: 12px;
+  margin: 0;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
 }
 
 select {
-  min-width: 220px;
+  min-width: 200px;
+  max-width: 280px;
 }
 </style>

@@ -2,7 +2,7 @@
 
 A client-side binary gate sequencer for the
 [Nervous Squirrel Conway's Game](https://www.nervoussquirrel.com/conways_game.html)
-eurorack module, by [alephvoid.com](https://alephvoid.com).
+eurorack module, by [Aleph Void, LLC](https://alephvoid.com).
 
 Draw on/off steps on a piano-roll style grid, one row per module output, and the
 app sends MIDI notes over [Web MIDI](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API)
@@ -31,6 +31,10 @@ backend, and songs autosave to local storage.
   storage a moment later and restored on the next visit; the Song panel shows
   when the last save happened and warns if storage is full or disabled.
 - **Loop, panic (Esc), Space to play/stop**, and JSON export/import.
+- **Editor-first layout.** The grid fills the viewport below a one-line
+  toolbar (MIDI output + transport); sections, module settings and song files
+  live in a collapsible settings drawer whose state is remembered. A Full
+  screen button puts the whole GUI in the browser's full-screen mode.
 
 ## Browser support
 

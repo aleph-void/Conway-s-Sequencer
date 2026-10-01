@@ -64,7 +64,7 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 </script>
 
 <template>
-  <section class="panel grid-panel" aria-labelledby="grid-heading">
+  <section class="panel grid-panel" aria-labelledby="grid-heading" data-testid="grid-panel">
     <div class="head">
       <h2 id="grid-heading">Gates</h2>
       <span class="muted count" data-testid="channel-count">
@@ -149,7 +149,11 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 
 <style scoped>
 .grid-panel {
-  padding-bottom: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 12px;
 }
 
 .head {
@@ -169,8 +173,9 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 }
 
 .scroller {
+  flex: 1 1 auto;
+  min-height: 160px;
   overflow: auto;
-  max-height: 70vh;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
@@ -217,7 +222,7 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 .section-label {
   height: 32px;
   padding: 2px 8px;
-  border-left: 2px solid var(--accent-dim);
+  border-left: 2px solid var(--accent);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -245,12 +250,12 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 
 .channel-row {
   height: var(--cell-size);
-  border-bottom: 1px solid #0f141b;
+  border-bottom: 1px solid var(--cell-line);
 }
 
 .channel-row.is-muted .cell.on {
   background: var(--accent-dim);
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .cell {
@@ -258,7 +263,7 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
   width: var(--cell-size);
   height: var(--cell-size);
   background: var(--cell);
-  border-right: 1px solid #0b0f14;
+  border-right: 1px solid var(--cell-line);
   cursor: crosshair;
 }
 
@@ -276,13 +281,17 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
+.cell.on:hover {
+  filter: brightness(1.15);
+}
+
 .cell.playhead {
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent-light);
   background-color: var(--playhead);
 }
 
 .cell.playhead.on {
-  background-color: #8ff0c4;
+  background-color: var(--cell-on-playhead);
 }
 
 .cell:focus-visible {

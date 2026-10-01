@@ -42,8 +42,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <section class="panel transport" aria-labelledby="transport-heading">
-    <h2 id="transport-heading">Transport</h2>
+  <section class="group transport" aria-labelledby="transport-heading">
+    <h2 id="transport-heading" class="sr-only">Transport</h2>
     <div class="row">
       <button
         class="primary play"
@@ -75,6 +75,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </template>
 
 <style scoped>
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.row {
+  align-items: center;
+}
+
 .play {
   min-width: 96px;
 }
@@ -86,13 +97,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 
 .readout {
-  margin-left: auto;
-  font-size: 16px;
+  margin-left: 6px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
 }
 
 .meta {
-  margin: 10px 0 0;
-  font-size: 12px;
+  margin: 0;
+  font-size: 11.5px;
   color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
