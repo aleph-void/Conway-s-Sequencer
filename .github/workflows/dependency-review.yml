@@ -1,0 +1,30 @@
+name: Dependency review
+
+# Blocks pull requests that introduce dependencies with known vulnerabilities
+# or disallowed licenses. Free for public repositories, but it needs the
+# Dependency graph enabled under Settings > Advanced Security, otherwise the
+# action fails with "Dependency review is not supported on this repository".
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # lets the action post its summary as a PR comment
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          # Strong copyleft licences would be incompatible with this MIT project.
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
