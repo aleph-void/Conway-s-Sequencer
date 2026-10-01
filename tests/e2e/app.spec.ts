@@ -32,6 +32,34 @@ test.describe('shell', () => {
     await expect(page.getByTestId('sections-table')).toBeVisible()
   })
 
+  test('toggles full screen from the toolbar', async ({ midiPage: page }) => {
+    const button = page.getByTestId('toggle-fullscreen')
+    await expect(button).toHaveText(/Full screen/)
+    await expect(button).toHaveAttribute('aria-pressed', 'false')
+
+    // Headless Chromium has no real window to go full screen, so stub the
+    // API the way a browser would drive it: resolve, then fire fullscreenchange.
+    await page.evaluate(() => {
+      let element: Element | null = null
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => element })
+      document.documentElement.requestFullscreen = async () => {
+        element = document.documentElement
+        document.dispatchEvent(new Event('fullscreenchange'))
+      }
+      document.exitFullscreen = async () => {
+        element = null
+        document.dispatchEvent(new Event('fullscreenchange'))
+      }
+    })
+
+    await button.click()
+    await expect(button).toHaveText(/Exit full screen/)
+    await expect(button).toHaveAttribute('aria-pressed', 'true')
+    await button.click()
+    await expect(button).toHaveText(/^.*Full screen$/)
+    await expect(button).toHaveAttribute('aria-pressed', 'false')
+  })
+
   test('explains when Web MIDI is unavailable', async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'requestMIDIAccess', { configurable: true, value: undefined })

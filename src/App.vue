@@ -8,8 +8,10 @@ import SequencerGrid from './components/SequencerGrid.vue'
 import SongIO from './components/SongIO.vue'
 import BrandLogo from './components/BrandLogo.vue'
 import { useUiStore } from './stores/ui'
+import { useFullscreen } from './composables/useFullscreen'
 
 const ui = useUiStore()
+const fullscreen = useFullscreen()
 const year = new Date().getFullYear()
 </script>
 
@@ -21,17 +23,30 @@ const year = new Date().getFullYear()
         <MidiPanel />
         <span class="divider" aria-hidden="true" />
         <TransportBar />
-        <button
-          class="settings-toggle"
-          :class="{ active: ui.settingsOpen }"
-          :aria-expanded="ui.settingsOpen"
-          aria-controls="settings-drawer"
-          data-testid="toggle-settings"
-          @click="ui.toggleSettings()"
-        >
-          <span class="chevron" aria-hidden="true">{{ ui.settingsOpen ? '▾' : '▸' }}</span>
-          Settings
-        </button>
+        <div class="toolbar-actions">
+          <button
+            class="settings-toggle"
+            :class="{ active: ui.settingsOpen }"
+            :aria-expanded="ui.settingsOpen"
+            aria-controls="settings-drawer"
+            data-testid="toggle-settings"
+            @click="ui.toggleSettings()"
+          >
+            <span class="chevron" aria-hidden="true">{{ ui.settingsOpen ? '▾' : '▸' }}</span>
+            Settings
+          </button>
+          <button
+            v-if="fullscreen.supported"
+            :class="{ active: fullscreen.active.value }"
+            :aria-pressed="fullscreen.active.value"
+            :title="fullscreen.active.value ? 'Exit full screen' : 'Show the sequencer full screen'"
+            data-testid="toggle-fullscreen"
+            @click="fullscreen.toggle()"
+          >
+            <span class="glyph" aria-hidden="true">{{ fullscreen.active.value ? '⤡' : '⤢' }}</span>
+            {{ fullscreen.active.value ? 'Exit full screen' : 'Full screen' }}
+          </button>
+        </div>
       </div>
       <div v-if="ui.settingsOpen" id="settings-drawer" class="drawer" data-testid="settings-drawer">
         <SectionsPanel />
@@ -97,15 +112,31 @@ const year = new Date().getFullYear()
   background: var(--border);
 }
 
-.settings-toggle {
+.toolbar-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-actions button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.settings-toggle.active {
+.toolbar-actions button.active {
   border-color: var(--accent);
+  color: var(--accent-light);
+}
+
+.glyph {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+button.active .glyph {
   color: var(--accent-light);
 }
 

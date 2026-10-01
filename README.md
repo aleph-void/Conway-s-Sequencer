@@ -29,7 +29,8 @@ backend, and songs autosave to local storage.
 - **Loop, panic (Esc), Space to play/stop**, and JSON export/import.
 - **Editor-first layout.** The grid fills the viewport below a one-line
   toolbar (MIDI output + transport); sections, module settings and song files
-  live in a collapsible settings drawer whose state is remembered.
+  live in a collapsible settings drawer whose state is remembered. A Full
+  screen button puts the whole GUI in the browser's full-screen mode.
 
 ## Browser support
 
