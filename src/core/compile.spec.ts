@@ -75,6 +75,21 @@ describe('compileSong', () => {
     expect(events.map((e) => e.note)).toEqual([41, 41])
   })
 
+  it('only plays soloed channels while any channel is soloed', () => {
+    const s = song()
+    s.channels[1]!.solo = true
+    s.sections[0]!.steps = { c0: [0], c5: [0] }
+    expect(compileSong(s).events.map((e) => e.note)).toEqual([41, 41])
+
+    // Soloing a second channel un-silences it; the pair plays together.
+    s.channels[0]!.solo = true
+    expect(compileSong(s).events.map((e) => e.note)).toEqual([36, 41, 36, 41])
+
+    // A muted channel stays silent even when soloed.
+    s.channels[0]!.muted = true
+    expect(compileSong(s).events.map((e) => e.note)).toEqual([41, 41])
+  })
+
   it('ignores steps outside the section length', () => {
     const s = song()
     s.sections[0]!.steps = { c0: [15, 16, 99, -1] }

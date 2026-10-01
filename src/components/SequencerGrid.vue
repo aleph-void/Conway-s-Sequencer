@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { MAX_CHANNELS, isStepOn } from '../core/song'
+import { MAX_CHANNELS, isChannelSilenced, isStepOn } from '../core/song'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
 import ChannelHeader from './ChannelHeader.vue'
@@ -128,7 +128,7 @@ function cellClass(
         v-for="(channel, channelIndex) in store.song.channels"
         :key="channel.id"
         class="channel-row"
-        :class="{ 'is-muted': channel.muted }"
+        :class="{ 'is-muted': isChannelSilenced(channel, store.song.channels) }"
         :data-testid="`channel-row-${channelIndex}`"
       >
         <div class="row-head">

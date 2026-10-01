@@ -1,5 +1,5 @@
 import { noteOff, noteOn, outputToNote } from './midi'
-import { groupRuns, type Song } from './song'
+import { groupRuns, isChannelSilenced, type Song } from './song'
 import { buildTimeline, totalDuration, type SectionTiming } from './timing'
 
 export interface MidiEvent {
@@ -38,7 +38,7 @@ export function compileSong(song: Song): CompiledSong {
     const section = song.sections[timing.index]
     if (!section) continue
     for (const channel of song.channels) {
-      if (channel.muted) continue
+      if (isChannelSilenced(channel, song.channels)) continue
       const steps = section.steps[channel.id]
       if (!steps || steps.length === 0) continue
       const note = outputToNote(channel.output, baseNote)

@@ -61,7 +61,13 @@ function normalizeChannel(raw: unknown, index: number, seenIds: Set<string>): Ch
   let id = asString(raw.id, '')
   if (!id || seenIds.has(id)) id = generateId('ch')
   seenIds.add(id)
-  return { id, name: asString(raw.name, `Out ${output + 1}`), output, muted: raw.muted === true }
+  return {
+    id,
+    name: asString(raw.name, `Out ${output + 1}`),
+    output,
+    muted: raw.muted === true,
+    solo: raw.solo === true,
+  }
 }
 
 function normalizeSection(raw: unknown, index: number, seenIds: Set<string>, channelIds: Set<string>): Section {

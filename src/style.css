@@ -32,6 +32,9 @@
   --ok: #4ade80;
   --warn: #fbbf24;
   --danger: #f87171;
+  /* Solo button: amber so it reads differently from the violet mute. */
+  --solo: #fbbf24;
+  --solo-contrast: #1a1200;
 
   /* Sequencer grid */
   --cell: #12121a;
@@ -42,7 +45,7 @@
   --cell-on-playhead: var(--accent-bright);
   --playhead: var(--accent-glow);
   --cell-size: 22px;
-  --row-head-width: 240px;
+  --row-head-width: 264px;
 
   --radius: 6px;
   --radius-lg: 10px;

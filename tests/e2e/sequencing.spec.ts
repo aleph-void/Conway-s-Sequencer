@@ -115,6 +115,35 @@ test.describe('playback', () => {
     await expect(page.getByTestId('position')).toHaveText('0:00')
   })
 
+  test('solo plays only the soloed channels and marks the rest as muted', async ({ midiPage: page }) => {
+    await enableMidi(page)
+    await page.getByTestId('cell-0-0-0').click()
+    await page.getByTestId('cell-1-0-0').click()
+    await page.getByTestId('cell-2-0-0').click()
+
+    const solo = (i: number) => page.getByTestId(`channel-header-${i}`).getByTestId('channel-solo')
+    const mute = (i: number) => page.getByTestId(`channel-header-${i}`).getByTestId('channel-mute')
+
+    await solo(1).click()
+    await expect(solo(1)).toHaveAttribute('aria-pressed', 'true')
+    await expect(mute(0)).toHaveAttribute('title', 'Muted by solo')
+    await expect(mute(2)).toHaveAttribute('title', 'Muted by solo')
+    await expect(mute(1)).toHaveAttribute('title', 'Mute')
+
+    // A second solo joins the first: its implied mute is lifted.
+    await solo(2).click()
+    await expect(mute(2)).toHaveAttribute('title', 'Mute')
+    await expect(mute(0)).toHaveAttribute('title', 'Muted by solo')
+
+    await page.getByTestId('play').click()
+    await expect.poll(async () => (await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(2)
+    await page.getByTestId('play').click()
+    const notesOn = (await midiLog(page)).filter((e) => e.data[0] === 0x90).map((e) => e.data[1])
+    expect(notesOn).toContain(37)
+    expect(notesOn).toContain(38)
+    expect(notesOn).not.toContain(36)
+  })
+
   test('space toggles playback and panic sends note-offs for all outputs', async ({ midiPage: page }) => {
     await enableMidi(page)
     await page.locator('body').click({ position: { x: 5, y: 5 } })

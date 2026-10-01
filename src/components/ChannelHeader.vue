@@ -1,10 +1,16 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { noteName } from '../core/midi'
-import { MAX_CHANNELS, type Channel } from '../core/song'
+import { MAX_CHANNELS, isChannelSilenced, type Channel } from '../core/song'
 import { useSongStore } from '../stores/song'
 
 const props = defineProps<{ channel: Channel; index: number; baseNote: number; total: number }>()
 const store = useSongStore()
+
+/** Silenced overall: muted outright, or another channel is soloed and this one is not. */
+const silenced = computed(() => isChannelSilenced(props.channel, store.song.channels))
+/** Muted only because of another channel's solo; the M button shows it without being "on". */
+const mutedBySolo = computed(() => silenced.value && !props.channel.muted)
 
 function onOutput(event: Event) {
   // The UI shows 1-based outputs to match the module's panel labels.
@@ -17,7 +23,7 @@ function remove() {
 </script>
 
 <template>
-  <div class="channel-header" :class="{ muted: channel.muted }" :data-testid="`channel-header-${index}`">
+  <div class="channel-header" :class="{ muted: silenced }" :data-testid="`channel-header-${index}`">
     <input
       class="name"
       type="text"
@@ -40,13 +46,23 @@ function remove() {
     </label>
     <button
       class="icon toggle"
-      :class="{ active: channel.muted }"
+      :class="{ active: channel.muted, implied: mutedBySolo }"
       :aria-pressed="channel.muted"
-      title="Mute"
+      :title="mutedBySolo ? 'Muted by solo' : 'Mute'"
       data-testid="channel-mute"
       @click="store.updateChannel(channel.id, { muted: !channel.muted })"
     >
       M
+    </button>
+    <button
+      class="icon toggle solo"
+      :class="{ active: channel.solo }"
+      :aria-pressed="channel.solo"
+      title="Solo"
+      data-testid="channel-solo"
+      @click="store.updateChannel(channel.id, { solo: !channel.solo })"
+    >
+      S
     </button>
     <button class="icon" title="Move up" :disabled="index === 0" data-testid="channel-up" @click="store.moveChannel(channel.id, -1)">↑</button>
     <button class="icon" title="Move down" :disabled="index === total - 1" data-testid="channel-down" @click="store.moveChannel(channel.id, 1)">↓</button>
@@ -102,5 +118,18 @@ function remove() {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
+}
+
+/* Muted because another channel is soloed: lit, but dimmer than an explicit mute. */
+.toggle.implied {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-bright);
+}
+
+.toggle.solo.active {
+  background: var(--solo);
+  border-color: var(--solo);
+  color: var(--solo-contrast);
 }
 </style>
