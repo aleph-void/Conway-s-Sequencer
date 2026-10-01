@@ -24,6 +24,18 @@ import {
 import { buildTimeline, resolveTempos, totalDuration, totalSteps } from '../core/timing'
 
 export const STORAGE_KEY = 'conways-sequencer:song'
+/** Delay between the last edit and the autosave write. */
+export const AUTOSAVE_DEBOUNCE_MS = 250
+
+/**
+ * Where the autosave stands.
+ * - `unavailable`: no storage in this environment, nothing is ever saved.
+ * - `idle`: nothing has changed since the song was loaded.
+ * - `pending`: an edit is waiting for the debounce to elapse.
+ * - `saved`: the latest edit is in storage.
+ * - `error`: the last write failed (quota exceeded or storage disabled).
+ */
+export type SaveState = 'unavailable' | 'idle' | 'pending' | 'saved' | 'error'
 
 /** Load the autosaved song, or a fresh one if nothing valid is stored. */
 export function loadInitialSong(storage: Pick<Storage, 'getItem'> | null): Song {
@@ -41,6 +53,9 @@ export const useSongStore = defineStore('song', () => {
   const song = ref<Song>(loadInitialSong(storage))
   /** Bumped on every structural edit so the transport can recompile. */
   const revision = ref(0)
+  const saveState = ref<SaveState>(storage ? 'idle' : 'unavailable')
+  /** Epoch milliseconds of the last successful autosave in this session. */
+  const lastSavedAt = ref<number | null>(null)
 
   const timeline = computed(() => buildTimeline(song.value))
   const resolvedTempos = computed(() => resolveTempos(song.value.sections))
@@ -220,22 +235,30 @@ export const useSongStore = defineStore('song', () => {
 
   // ---- persistence ------------------------------------------------------
   let handle: ReturnType<typeof setTimeout> | null = null
+  /** Write the song to storage now, cancelling any pending debounced save. */
   function save() {
     if (!storage) return
     if (handle) clearTimeout(handle)
     handle = null
     try {
       storage.setItem(STORAGE_KEY, serializeSong(song.value))
+      saveState.value = 'saved'
+      lastSavedAt.value = Date.now()
     } catch {
-      // Quota exceeded or storage disabled: autosave is best-effort.
+      // Quota exceeded or storage disabled: autosave is best-effort, but say so.
+      saveState.value = 'error'
     }
   }
   if (storage) {
+    // Every GUI edit goes through an action that mutates `song`, so a deep
+    // watch is enough to pick all of them up; debounce so a paint-drag across
+    // many cells results in one write.
     watch(
       song,
       () => {
+        saveState.value = 'pending'
         if (handle) clearTimeout(handle)
-        handle = setTimeout(save, 250)
+        handle = setTimeout(save, AUTOSAVE_DEBOUNCE_MS)
       },
       { deep: true },
     )
@@ -250,6 +273,8 @@ export const useSongStore = defineStore('song', () => {
   return {
     song,
     revision,
+    saveState,
+    lastSavedAt,
     timeline,
     resolvedTempos,
     duration,

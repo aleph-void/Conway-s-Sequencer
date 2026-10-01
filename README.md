@@ -26,6 +26,9 @@ backend, and songs autosave to local storage.
 - **Sample-accurate-ish timing**: a look-ahead scheduler hands messages to the
   MIDI port with explicit timestamps, so JavaScript timer jitter never reaches
   the module. Edits while playing are picked up live.
+- **Autosave.** Every edit made in the GUI is written to the browser's local
+  storage a moment later and restored on the next visit; the Song panel shows
+  when the last save happened and warns if storage is full or disabled.
 - **Loop, panic (Esc), Space to play/stop**, and JSON export/import.
 
 ## Browser support

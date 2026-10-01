@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { useSongStore } from '../stores/song'
 import SongIO from './SongIO.vue'
 
@@ -46,6 +47,50 @@ describe('SongIO', () => {
 
     Object.defineProperty(input.element, 'files', { value: [], configurable: true })
     await input.trigger('change')
+  })
+
+  it('shows the live autosave status', async () => {
+    const store = useSongStore()
+    const wrapper = mount(SongIO)
+    const status = wrapper.get('[data-testid="autosave-status"]')
+    expect(status.text()).toContain('Songs autosave in this browser')
+    expect(status.attributes('data-save-state')).toBe('idle')
+
+    store.saveState = 'pending'
+    await nextTick()
+    expect(status.text()).toContain('Saving')
+
+    store.saveState = 'saved'
+    store.lastSavedAt = new Date(2026, 9, 1, 12, 34, 56).getTime()
+    await nextTick()
+    expect(status.text()).toMatch(/Autosaved at .*34.*56/)
+    expect(status.classes()).toContain('status-ok')
+
+    store.lastSavedAt = null
+    await nextTick()
+    expect(status.text()).toBe('Autosaved.')
+
+    store.saveState = 'error'
+    await nextTick()
+    expect(status.text()).toContain('Autosave failed')
+    expect(status.classes()).toContain('status-bad')
+
+    store.saveState = 'unavailable'
+    await nextTick()
+    expect(status.text()).toContain('unavailable')
+    expect(status.classes()).toContain('status-warn')
+  })
+
+  it('reaches "saved" after editing through the store', async () => {
+    vi.useFakeTimers()
+    const store = useSongStore()
+    const wrapper = mount(SongIO)
+    store.rename('Edited')
+    await nextTick()
+    expect(wrapper.get('[data-testid="autosave-status"]').text()).toContain('Saving')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(wrapper.get('[data-testid="autosave-status"]').text()).toContain('Autosaved at')
+    vi.useRealTimers()
   })
 
   it('starts a new song after confirmation', async () => {
