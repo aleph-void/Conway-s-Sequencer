@@ -1,4 +1,4 @@
-import { enableMidi, expect, midiLog, test } from './fixtures'
+import { enableMidi, expect, midiLog, storedSong, test } from './fixtures'
 
 test.describe('sections', () => {
   test('adds sections that inherit tempo and reshape the grid', async ({ midiPage: page }) => {
@@ -52,9 +52,7 @@ test.describe('drawing gates', () => {
     await page.getByTestId('channel-name').first().press('Tab')
     await expect(page.getByTestId('autosave-status')).toContainText('Autosaved at')
     await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
-    await expect
-      .poll(() => page.evaluate(() => localStorage.getItem('conways-sequencer:song') ?? ''))
-      .toContain('"Kick"')
+    await expect.poll(async () => (await storedSong(page)).channels?.[0]?.name).toBe('Kick')
 
     await page.reload()
     for (const s of [4, 5, 6, 7]) await expect(cell(1, s)).toHaveAttribute('aria-checked', 'true')
@@ -63,7 +61,7 @@ test.describe('drawing gates', () => {
   })
 
   test('autosaves every kind of edit, including settings and sections', async ({ midiPage: page }) => {
-    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('conways-sequencer:song') ?? '{}'))
+    const stored = () => storedSong(page)
     await page.getByTestId('song-name').fill('Everything')
     await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
     await expect.poll(async () => (await stored()).name).toBe('Everything')
@@ -77,7 +75,7 @@ test.describe('drawing gates', () => {
 
     await page.getByTestId('cell-5-1-2').click()
     await expect.poll(async () => (await stored()).sections?.[1]?.steps).toEqual({
-      [(await stored()).channels[5].id]: [2],
+      [(await stored()).channels![5]!.id]: [2],
     })
   })
 
