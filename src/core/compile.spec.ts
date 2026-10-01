@@ -16,16 +16,16 @@ describe('compileSong', () => {
     expect(c.duration).toBe(2)
   })
 
-  it('emits note-on/off pairs for retrigger steps at the right times', () => {
+  it('holds a gate high for the whole step it is drawn on', () => {
     const s = song()
     s.sections[0]!.steps = { c0: [0, 4] }
     const { events } = compileSong(s)
     expect(events).toHaveLength(4)
     expect(events[0]).toMatchObject({ time: 0, kind: 'on', note: 36, data: [0x90, 36, 100] })
     expect(events[1]).toMatchObject({ kind: 'off', note: 36, data: [0x80, 36, 0] })
-    expect(events[1]!.time).toBeCloseTo(0.0625) // 50% of 0.125
+    expect(events[1]!.time).toBeCloseTo(0.125 - MIN_GAP_SECONDS) // full step, minus the retrigger gap
     expect(events[2]!.time).toBeCloseTo(0.5)
-    expect(events[3]!.time).toBeCloseTo(0.5625)
+    expect(events[3]!.time).toBeCloseTo(0.625 - MIN_GAP_SECONDS)
   })
 
   it('uses the base note, MIDI channel and velocity from settings', () => {
@@ -37,9 +37,8 @@ describe('compileSong', () => {
     expect(events[1]!.data).toEqual([0x82, 53, 0])
   })
 
-  it('merges consecutive steps into one gate in tie mode', () => {
+  it('keeps a gate high through consecutive on-steps until the next off-step', () => {
     const s = song()
-    s.channels[0]!.gateMode = 'tie'
     s.sections[0]!.steps = { c0: [0, 1, 2, 8] }
     const { events } = compileSong(s)
     expect(events.map((e) => e.kind)).toEqual(['on', 'off', 'on', 'off'])
@@ -49,15 +48,23 @@ describe('compileSong', () => {
     expect(events[3]!.time).toBeCloseTo(1.125 - MIN_GAP_SECONDS)
   })
 
-  it('respects gate length and never lets a gate touch the next step', () => {
+  it('drops a gate just before the next on-step after a gap so the module sees a new note-on', () => {
     const s = song()
-    s.settings.gateLength = 1
-    s.sections[0]!.steps = { c0: [0, 1] }
+    s.sections[0]!.steps = { c0: [0, 2] }
     const { events } = compileSong(s)
+    expect(events.map((e) => e.kind)).toEqual(['on', 'off', 'on', 'off'])
     expect(events[1]!.time).toBeCloseTo(0.125 - MIN_GAP_SECONDS)
     expect(events[1]!.time).toBeLessThan(events[2]!.time)
-    expect(events[1]!.kind).toBe('off')
-    expect(events[2]!.kind).toBe('on')
+    expect(events[2]!.time).toBeCloseTo(0.25)
+  })
+
+  it('holds a gate to the end of the section when the last steps are on', () => {
+    const s = song()
+    s.sections[0]!.steps = { c0: [14, 15] }
+    const { events } = compileSong(s)
+    expect(events.map((e) => e.kind)).toEqual(['on', 'off'])
+    expect(events[0]!.time).toBeCloseTo(1.75)
+    expect(events[1]!.time).toBeCloseTo(2 - MIN_GAP_SECONDS)
   })
 
   it('skips muted channels', () => {
@@ -85,9 +92,7 @@ describe('compileSong', () => {
 
   it('sorts events by time with note-offs before note-ons at equal times', () => {
     const s = song()
-    s.channels[0]!.gateMode = 'tie'
     s.sections[0]!.steps = { c0: [0], c5: [0] }
-    s.settings.gateLength = 1
     const { events } = compileSong(s)
     expect(events.map((e) => [e.kind, e.note])).toEqual([
       ['on', 36],

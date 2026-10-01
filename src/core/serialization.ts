@@ -48,7 +48,6 @@ function normalizeSettings(raw: unknown): SongSettings {
     midiChannel: clamp(Math.round(asNumber(raw.midiChannel, d.midiChannel)), 1, 16),
     baseNote: clamp(Math.round(asNumber(raw.baseNote, d.baseNote)), 0, 127 - (MAX_CHANNELS - 1)),
     velocity: clamp(Math.round(asNumber(raw.velocity, d.velocity)), 1, 127),
-    gateLength: clamp(asNumber(raw.gateLength, d.gateLength), 0.05, 1),
     loop: typeof raw.loop === 'boolean' ? raw.loop : d.loop,
   }
 }
@@ -62,8 +61,7 @@ function normalizeChannel(raw: unknown, index: number, seenIds: Set<string>): Ch
   let id = asString(raw.id, '')
   if (!id || seenIds.has(id)) id = generateId('ch')
   seenIds.add(id)
-  const gateMode = raw.gateMode === 'tie' ? 'tie' : 'retrigger'
-  return { id, name: asString(raw.name, `Out ${output + 1}`), output, muted: raw.muted === true, gateMode }
+  return { id, name: asString(raw.name, `Out ${output + 1}`), output, muted: raw.muted === true }
 }
 
 function normalizeSection(raw: unknown, index: number, seenIds: Set<string>, channelIds: Set<string>): Section {

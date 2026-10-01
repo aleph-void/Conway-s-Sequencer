@@ -40,7 +40,8 @@ describe('useTransportStore', () => {
     expect(transport.playing).toBe(true)
     expect(out.sent[0]).toEqual([[0x90, 36, 100], 0])
     await vi.advanceTimersByTimeAsync(600)
-    expect(out.sent.map((s) => s[1])).toEqual([0, 62.5, 500, 562.5])
+    // Each gate holds for its whole 125 ms step, minus the 2 ms gap before the next step.
+    expect(out.sent.map((s) => s[1])).toEqual([0, 123, 500, 623])
     expect(transport.positionSeconds).toBeCloseTo(0.6, 1)
     expect(transport.currentStep).toBe(4)
     expect(transport.position?.sectionIndex).toBe(0)
