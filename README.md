@@ -60,6 +60,35 @@ request. On a push to `main` it then builds with `BASE_PATH=/<repo>/` and
 deploys `dist/` to GitHub Pages. Enable Pages for the repository with
 **Source: GitHub Actions** once, and every merge to `main` ships.
 
+## Automation
+
+The other files under `.github/` are free GitHub features that keep the
+repository healthy without any paid plan (the repository is public):
+
+- **Dependabot** (`dependabot.yml`) opens weekly, grouped pull requests for npm
+  packages and for the actions used in the workflows. Security updates arrive as
+  soon as an advisory is published.
+- **Dependabot auto-merge** (`workflows/dependabot-auto-merge.yml`) enables
+  GitHub auto-merge on Dependabot's minor and patch bumps, so they land once CI
+  is green; majors wait for a human. It needs **Allow auto-merge** enabled in
+  the repository settings and a ruleset on `main` that requires the CI job
+  (without a required check, auto-merge would merge immediately).
+- **CodeQL** (`workflows/codeql.yml`) scans the TypeScript on every pull
+  request, every push to `main` and weekly, and reports to the Security tab. If
+  CodeQL *default setup* is enabled in the repository's code-security settings,
+  disable it or delete this workflow; the two cannot run side by side.
+- **Dependency review** (`workflows/dependency-review.yml`) fails a pull request
+  that adds a dependency with a known high-severity vulnerability or a strong
+  copyleft licence.
+- **OpenSSF Scorecard** (`workflows/scorecard.yml`) scores supply-chain
+  practices on every push to `main` and weekly, and publishes the result so a
+  badge can be shown.
+- **Workflow lint** (`workflows/workflow-lint.yml`) runs
+  [actionlint](https://github.com/rhysd/actionlint) and
+  [zizmor](https://github.com/zizmorcore/zizmor) whenever anything under
+  `.github/` changes, catching workflow syntax errors and security
+  anti-patterns.
+
 ## Song file format
 
 Songs are plain JSON (`*.conway-seq.json`). Unknown fields are ignored on

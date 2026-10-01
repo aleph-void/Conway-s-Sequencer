@@ -1,0 +1,42 @@
+name: Workflow lint
+
+# Static checks for the workflows themselves: actionlint catches syntax and
+# expression mistakes, zizmor flags security anti-patterns (template injection,
+# over-broad permissions, unpinned actions, ...).
+on:
+  push:
+    branches: [main]
+    paths: [".github/**"]
+  pull_request:
+    paths: [".github/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload findings to the Security tab
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: zizmorcore/zizmor-action@v0.6.4

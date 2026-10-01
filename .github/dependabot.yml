@@ -1,0 +1,42 @@
+# Keeps npm dependencies and GitHub Actions versions up to date.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 10
+    labels: [dependencies, javascript]
+    commit-message:
+      prefix: deps
+      prefix-development: deps(dev)
+    # One PR per group instead of one per package; majors still get their own PR.
+    groups:
+      vue:
+        patterns: ["vue", "@vue/*", "@vitejs/plugin-vue", "vue-tsc", "vue-eslint-parser", "eslint-plugin-vue"]
+      vite-and-vitest:
+        patterns: ["vite", "vitest", "@vitest/*", "jsdom"]
+      eslint-and-typescript:
+        patterns: ["eslint", "@eslint/*", "typescript", "typescript-eslint", "@types/*"]
+      playwright:
+        patterns: ["@playwright/*", "playwright"]
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    labels: [dependencies, github-actions]
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

@@ -1,0 +1,28 @@
+name: Dependency review
+
+# Blocks pull requests that introduce dependencies with known vulnerabilities
+# or disallowed licenses. Free for public repositories.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # lets the action post its summary as a PR comment
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          # Strong copyleft licences would be incompatible with this MIT project.
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
