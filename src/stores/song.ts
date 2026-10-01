@@ -163,6 +163,18 @@ export const useSongStore = defineStore('song', () => {
     touch()
   }
 
+  /** Move a section so that it ends up at `to` (clamped to the list); used by drag-and-drop reordering. */
+  function moveSectionTo(id: string, to: number) {
+    const list = song.value.sections
+    const from = list.findIndex((s) => s.id === id)
+    if (from < 0 || !Number.isFinite(to)) return
+    const target = clamp(Math.round(to), 0, list.length - 1)
+    if (target === from) return
+    const [item] = list.splice(from, 1)
+    list.splice(target, 0, item!)
+    touch()
+  }
+
   function updateSection(id: string, patch: Partial<Omit<Section, 'id' | 'steps'>>) {
     const section = sectionById(id)
     if (!section) return
@@ -415,6 +427,7 @@ export const useSongStore = defineStore('song', () => {
     duplicateSection,
     removeSection,
     moveSection,
+    moveSectionTo,
     updateSection,
     toggleStep,
     setStep,

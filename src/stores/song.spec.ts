@@ -119,6 +119,33 @@ describe('useSongStore', () => {
       expect(store.song.sections).toHaveLength(1)
     })
 
+    it('moves a section to an absolute index, clamping out-of-range targets', () => {
+      const store = useSongStore()
+      const a = store.song.sections[0]!.id
+      const b = store.addSection({ name: 'B' }).id
+      const c = store.addSection({ name: 'C' }).id
+      const d = store.addSection({ name: 'D' }).id
+      const order = () => store.song.sections.map((s) => s.id)
+      const before = store.revision
+
+      store.moveSectionTo(a, 2)
+      expect(order()).toEqual([b, c, a, d])
+      store.moveSectionTo(d, 0)
+      expect(order()).toEqual([d, b, c, a])
+      store.moveSectionTo(b, 99)
+      expect(order()).toEqual([d, c, a, b])
+      store.moveSectionTo(c, -5)
+      expect(order()).toEqual([c, d, a, b])
+      expect(store.revision).toBe(before + 4)
+
+      // No-ops never bump the revision.
+      store.moveSectionTo(c, 0)
+      store.moveSectionTo(c, Number.NaN)
+      store.moveSectionTo('nope', 1)
+      expect(order()).toEqual([c, d, a, b])
+      expect(store.revision).toBe(before + 4)
+    })
+
     it('clamps section edits and trims steps that no longer fit', () => {
       const store = useSongStore()
       const sec = store.song.sections[0]!
