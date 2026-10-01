@@ -44,7 +44,9 @@
   --cell-on-edge: rgba(0, 0, 0, 0.35);
   --cell-on-playhead: var(--accent-bright);
   --playhead: var(--accent-glow);
+  /* Step width; rows are taller than they are wide so a track is an easy pointer target. */
   --cell-size: 22px;
+  --row-height: 36px;
   --row-head-width: 264px;
 
   --radius: 6px;
