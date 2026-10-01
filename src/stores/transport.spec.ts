@@ -213,7 +213,10 @@ describe('useTransportStore', () => {
     expect(restart[1]).toBeLessThanOrEqual(820)
     expect(gates()).toBe(before)
     await vi.advanceTimersByTimeAsync(300)
-    expect(transport.positionSeconds).toBeCloseTo((1000 - restart[1]!) / 1000, 2)
+    // The readout is refreshed once per (16 ms) frame, so it may lag the clock by up to one frame.
+    const expected = (1000 - restart[1]!) / 1000
+    expect(transport.positionSeconds).toBeGreaterThan(expected - 0.02)
+    expect(transport.positionSeconds).toBeLessThanOrEqual(expected)
   })
 
   it('reset while paused returns to the stopped state', async () => {
