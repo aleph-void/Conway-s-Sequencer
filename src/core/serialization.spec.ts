@@ -39,7 +39,7 @@ describe('normalizeSong', () => {
       subdivision: 4,
       steps: {},
     })
-    expect(song.settings).toEqual({ midiChannel: 1, baseNote: 36, velocity: 100, loop: true })
+    expect(song.settings).toEqual({ midiChannel: 1, baseNote: 36, velocity: 100, playGateNote: 99, loop: true })
   })
 
   it('clamps numeric ranges', () => {

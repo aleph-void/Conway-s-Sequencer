@@ -95,6 +95,45 @@ describe('Scheduler', () => {
     expect(scheduler.position()).toBeCloseTo(1)
   })
 
+  it('re-raises a gate that spans the start offset', () => {
+    scheduler.load([ev(0, 'on', 40), ev(2, 'off', 40), ev(0.5, 'on', 41), ev(0.6, 'off', 41)].sort((a, b) => a.time - b.time), 3, false)
+    vi.setSystemTime(1000)
+    scheduler.start(1)
+    // Note 40 is still high at 1 s, so its note-on is re-sent now; note 41 already ended.
+    expect(sent).toEqual([{ data: [0x90, 40, 100], at: 1000 }])
+    vi.advanceTimersByTime(1000)
+    expect(sent.at(-1)).toEqual({ data: [0x80, 40, 0], at: 2000 })
+  })
+
+  it('does not re-raise anything when starting from the top', () => {
+    scheduler.load([ev(0.5, 'on'), ev(0.6, 'off')], 1, false)
+    scheduler.start(0)
+    expect(sent).toEqual([])
+  })
+
+  it('sends stop note-offs after events already handed to the output', () => {
+    scheduler.load([ev(0.05, 'on', 40), ev(0.08, 'off', 40), ev(0.09, 'on', 41), ev(5, 'off', 41)], 10, false)
+    scheduler.start()
+    // Everything up to 100 ms is already queued at the output.
+    expect(sent.map((s) => s.at)).toEqual([50, 80, 90])
+    scheduler.stop()
+    // The note-off for 41 must not be timestamped before its queued note-on.
+    expect(sent.at(-1)).toEqual({ data: [0x80, 41, 0], at: 90 })
+  })
+
+  it('restarts after the events already queued when started while running', () => {
+    scheduler.load([ev(0.09, 'on', 41), ev(5, 'off', 41)], 10, false)
+    scheduler.start()
+    expect(sent.map((s) => s.at)).toEqual([90])
+    scheduler.start(0)
+    // Off for the queued note at the instant it was queued for; the new pass is anchored there too.
+    expect(sent.slice(1)).toEqual([{ data: [0x80, 41, 0], at: 90 }])
+    expect(scheduler.position()).toBe(0)
+    vi.advanceTimersByTime(100)
+    expect(sent.slice(2)).toEqual([{ data: [0x90, 41, 100], at: 180 }])
+    expect(scheduler.position()).toBeCloseTo(0.01, 3)
+  })
+
   it('reloads material while running without losing position or re-sending events', () => {
     scheduler.load([ev(0, 'on'), ev(0.05, 'off'), ev(0.55, 'on'), ev(0.6, 'off')], 2, true)
     scheduler.start()

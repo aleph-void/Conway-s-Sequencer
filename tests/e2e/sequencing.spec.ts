@@ -140,16 +140,16 @@ test.describe('playback', () => {
     await page.getByTestId('cell-0-0-0').click()
     await page.getByTestId('cell-2-0-4').click()
     await page.getByTestId('play').click()
-    await expect(page.getByTestId('play')).toContainText('Stop')
+    await expect(page.getByTestId('play')).toContainText('Pause')
     await expect(page.getByTestId('section-readout')).toContainText('A · bar 1')
 
     await expect.poll(async () => (await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(5)
     const log = await midiLog(page)
     expect(log.every((e) => e.port === 'conway')).toBe(true)
-    // The play gate (note 100) goes high before the first step.
+    // The play gate (note 99, the module's 64th output) goes high before the first step.
     const first = log.slice(0, 5).map((e) => e.data)
     expect(first).toEqual([
-      [0x90, 100, 100],
+      [0x90, 99, 100],
       [0x90, 36, 100],
       [0x80, 36, 0],
       [0x90, 38, 100],
@@ -158,11 +158,46 @@ test.describe('playback', () => {
     expect(log[1]!.timestamp).toBeDefined()
     expect(log[3]!.timestamp! - log[1]!.timestamp!).toBeCloseTo(500, -1)
 
-    await page.getByTestId('play').click()
+    await page.getByTestId('stop').click()
     await expect(page.getByTestId('play')).toContainText('Play')
     await expect(page.getByTestId('position')).toHaveText('0:00')
     // Stopping releases the play gate.
-    expect((await midiLog(page)).at(-1)!.data).toEqual([0x80, 100, 0])
+    expect((await midiLog(page)).at(-1)!.data).toEqual([0x80, 99, 0])
+  })
+
+  test('pauses where the cursor is, resumes from there and resets to the start', async ({ midiPage: page }) => {
+    await enableMidi(page)
+    await page.getByTestId('cell-0-0-0').click()
+    await page.getByTestId('play').click()
+    await expect(page.getByTestId('play')).toContainText('Pause')
+    await expect.poll(async () => (await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(3)
+    await expect.poll(() => page.getByTestId('position').textContent()).not.toBe('0:00')
+
+    await page.getByTestId('play').click()
+    await expect(page.getByTestId('play')).toContainText('Resume')
+    const paused = await page.getByTestId('position').textContent()
+    expect(paused).not.toBe('0:00')
+    // Pausing drops the play gate; the cursor and the section readout stay put.
+    expect((await midiLog(page)).at(-1)!.data).toEqual([0x80, 99, 0])
+    await expect(page.getByTestId('section-readout')).toContainText(/A · bar \d+ · beat \d+/)
+    await page.waitForTimeout(300)
+    expect(await page.getByTestId('position').textContent()).toBe(paused)
+
+    await page.getByTestId('play').click()
+    await expect(page.getByTestId('play')).toContainText('Pause')
+    // Resuming raises the gate again without replaying the first step.
+    const sinceResume = (await midiLog(page)).slice(-1)
+    expect(sinceResume[0]!.data).toEqual([0x90, 99, 100])
+
+    await page.getByTestId('reset').click()
+    await expect(page.getByTestId('play')).toContainText('Pause')
+    await expect.poll(async () => (await midiLog(page)).some((m, i) => i > 3 && m.data[1] === 36 && m.data[0] === 0x90)).toBe(true)
+
+    await page.getByTestId('play').click()
+    await page.getByTestId('reset').click()
+    await expect(page.getByTestId('play')).toContainText('Play')
+    await expect(page.getByTestId('position')).toHaveText('0:00')
+    await expect(page.getByTestId('section-readout')).toHaveText('—')
   })
 
   test('solo plays only the soloed channels and marks the rest as muted', async ({ midiPage: page }) => {
@@ -198,34 +233,37 @@ test.describe('playback', () => {
     await enableMidi(page)
     await page.locator('body').click({ position: { x: 5, y: 5 } })
     await page.keyboard.press('Space')
-    await expect(page.getByTestId('play')).toContainText('Stop')
-    expect((await midiLog(page))[0]!.data).toEqual([0x90, 100, 100])
+    await expect(page.getByTestId('play')).toContainText('Pause')
+    expect((await midiLog(page))[0]!.data).toEqual([0x90, 99, 100])
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('play')).toContainText('Play')
     const log = await midiLog(page)
     const offs = log.filter((e) => e.data[0] === 0x80)
     // Stop releases the play gate, then panic floods all 63 outputs plus the play gate.
     expect(offs).toHaveLength(1 + 64)
-    expect(offs[0]!.data).toEqual([0x80, 100, 0])
+    expect(offs[0]!.data).toEqual([0x80, 99, 0])
     expect(offs[1]!.data).toEqual([0x80, 36, 0])
     expect(offs[63]!.data).toEqual([0x80, 98, 0])
-    expect(offs[64]!.data).toEqual([0x80, 100, 0])
+    expect(offs[64]!.data).toEqual([0x80, 99, 0])
     expect(log.at(-1)!.data).toEqual([0xb0, 123, 0])
   })
 
-  test('uses the configured MIDI channel and base note', async ({ midiPage: page }) => {
+  test('uses the configured MIDI channel, base note and play gate note', async ({ midiPage: page }) => {
     await enableMidi(page)
     await page.getByTestId('midi-channel').fill('5')
     await page.getByTestId('midi-channel').press('Tab')
     await page.getByTestId('base-note').fill('60')
     await page.getByTestId('base-note').press('Tab')
+    await page.getByTestId('play-gate-note').fill('100')
+    await page.getByTestId('play-gate-note').press('Tab')
     await page.getByTestId('cell-3-0-0').click()
     await page.getByTestId('play').click()
     await expect.poll(async () => (await midiLog(page)).length).toBeGreaterThanOrEqual(2)
     const log = await midiLog(page)
     expect(log[0]!.data).toEqual([0x94, 100, 100])
     expect(log[1]!.data).toEqual([0x94, 63, 100])
-    await page.getByTestId('play').click()
+    await page.getByTestId('stop').click()
+    expect((await midiLog(page)).at(-1)!.data).toEqual([0x84, 100, 0])
   })
 })
 

@@ -48,6 +48,7 @@ function normalizeSettings(raw: unknown): SongSettings {
     midiChannel: clamp(Math.round(asNumber(raw.midiChannel, d.midiChannel)), 1, 16),
     baseNote: clamp(Math.round(asNumber(raw.baseNote, d.baseNote)), 0, 127 - (MAX_CHANNELS - 1)),
     velocity: clamp(Math.round(asNumber(raw.velocity, d.velocity)), 1, 127),
+    playGateNote: clamp(Math.round(asNumber(raw.playGateNote, d.playGateNote)), 0, 127),
     loop: typeof raw.loop === 'boolean' ? raw.loop : d.loop,
   }
 }

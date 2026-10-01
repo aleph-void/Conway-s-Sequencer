@@ -132,8 +132,8 @@ export const useMidiStore = defineStore('midi', () => {
   }
 
   /** Note-off for every possible output on the module, then All Notes Off. */
-  function panic(midiChannel: number, baseNote: number) {
-    for (const msg of allOutputsOff(midiChannel, baseNote)) send(msg)
+  function panic(midiChannel: number, baseNote: number, playGateNote?: number) {
+    for (const msg of allOutputsOff(midiChannel, baseNote, playGateNote)) send(msg)
   }
 
   /** Test hook / teardown: forget the access object. */

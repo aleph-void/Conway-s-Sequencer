@@ -16,8 +16,10 @@ backend, and songs autosave to local storage.
 - **Up to 63 channels** on the module's 64 outputs. Each channel maps to an
   output number (1–63), which becomes MIDI note `baseNote + output - 1`
   (output 1 = C2 / note 36 by default, as the module expects).
-- **Play gate.** MIDI note 100 is held on for as long as the song is playing and
-  released when it stops, so the module's last output can act as a run/stop gate.
+- **Play gate.** A MIDI note is held on for as long as the song is playing and
+  released when it pauses or stops, so one module output can act as a run/stop
+  gate. It defaults to note 99, the module's 64th output (its 64 outputs follow
+  notes 36–99), and can be changed in the module settings.
 - **Sections** with their own tempo, time signature, bar count and step
   resolution. Leave a section's tempo blank and it inherits the previous
   section's tempo. Reorder sections by dragging the ⋮⋮ grip (or focus it and
@@ -38,7 +40,10 @@ backend, and songs autosave to local storage.
   load it and work on it (the choice is remembered across reloads), start a new
   song, or delete one. "New" and "Import JSON" add a song to the browser rather
   than replacing the one you have open.
-- **Loop, panic (Esc), Space to play/stop**, and JSON export/import.
+- **Transport.** Play, pause where the cursor is, resume from there, reset the
+  cursor to the start (playback keeps going if it was running), stop, loop and
+  panic. Space = play/pause, Esc = panic.
+- **JSON export/import.**
 - **Editor-first layout.** The grid fills the viewport below a one-line
   toolbar (MIDI output + transport); sections, module settings and song files
   live in a collapsible settings drawer whose state is remembered. A Full
@@ -112,7 +117,7 @@ import and out-of-range values are clamped; see `src/core/serialization.ts`.
 {
   "version": 1,
   "name": "Untitled",
-  "settings": { "midiChannel": 1, "baseNote": 36, "velocity": 100, "loop": true },
+  "settings": { "midiChannel": 1, "baseNote": 36, "velocity": 100, "playGateNote": 99, "loop": true },
   "channels": [{ "id": "ch_1", "name": "Kick", "output": 0, "muted": false, "solo": false }],
   "sections": [
     {
