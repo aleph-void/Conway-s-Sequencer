@@ -30,6 +30,11 @@ backend, and songs autosave to local storage.
 - **Autosave.** Every edit made in the GUI is written to the browser's local
   storage a moment later and restored on the next visit; the Song panel shows
   when the last save happened and warns if storage is full or disabled.
+- **Song browser.** The "Songs" tab on the left edge slides out a drawer listing
+  every song saved in this browser, most recently edited first. Pick one to
+  load it and work on it (the choice is remembered across reloads), start a new
+  song, or delete one. "New" and "Import JSON" add a song to the browser rather
+  than replacing the one you have open.
 - **Loop, panic (Esc), Space to play/stop**, and JSON export/import.
 
 ## Browser support

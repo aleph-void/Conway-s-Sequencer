@@ -64,3 +64,20 @@ export async function enableMidi(page: Page, outputId = 'conway') {
 export async function midiLog(page: Page): Promise<MidiLogEntry[]> {
   return page.evaluate(() => window.__midiLog)
 }
+
+/** The shape of an autosaved song that the specs assert on; `{}` when nothing is stored. */
+export interface StoredSong {
+  name?: string
+  channels?: Array<{ id: string; name: string }>
+  sections?: Array<{ steps: Record<string, number[]> }>
+  settings?: { velocity: number }
+}
+
+/** The open song's autosaved JSON, parsed, as the song library stores it. */
+export async function storedSong(page: Page): Promise<StoredSong> {
+  return page.evaluate(() => {
+    const index = JSON.parse(localStorage.getItem('conways-sequencer:library') ?? '{}')
+    const id = index.currentId
+    return JSON.parse((id && localStorage.getItem(`conways-sequencer:song:${id}`)) || '{}')
+  })
+}

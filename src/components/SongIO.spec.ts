@@ -93,16 +93,26 @@ describe('SongIO', () => {
     vi.useRealTimers()
   })
 
-  it('starts a new song after confirmation', async () => {
+  it('starts a new song and keeps the old one in the library', async () => {
     const store = useSongStore()
     store.rename('Old')
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const wrapper = mount(SongIO)
     await wrapper.get('[data-testid="new-song"]').trigger('click')
-    expect(store.song.name).toBe('Old')
-    confirm.mockReturnValue(true)
-    await wrapper.get('[data-testid="new-song"]').trigger('click')
     expect(store.song.name).toBe('Untitled')
-    confirm.mockRestore()
+    expect(wrapper.get('[data-testid="io-message"]').text()).toBe('New song. "Old" is kept in the Song browser.')
+    expect(store.library.map((e) => e.name)).toEqual(['Untitled', 'Old'])
+  })
+
+  it('imports into a new library entry', async () => {
+    const store = useSongStore()
+    store.rename('Keep me')
+    const wrapper = mount(SongIO)
+    const json = JSON.stringify({ name: 'Imported', channels: [{ output: 3 }], sections: [{ tempo: 99 }] })
+    const input = wrapper.get('[data-testid="import-file"]')
+    const file = new File([json], 'song.json', { type: 'application/json' })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+    await vi.waitFor(() => expect(store.song.name).toBe('Imported'))
+    expect(store.library.map((e) => e.name)).toEqual(['Imported', 'Keep me'])
   })
 })

@@ -1,8 +1,14 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { LEGACY_SONG_KEY, LIBRARY_KEY, readIndex, songKey } from '../core/library'
 import { MAX_CHANNELS, createSong } from '../core/song'
-import { AUTOSAVE_DEBOUNCE_MS, STORAGE_KEY, loadInitialSong, useSongStore } from './song'
+import { AUTOSAVE_DEBOUNCE_MS, useSongStore } from './song'
+
+/** The open song's JSON as stored, or null. */
+function storedSong(store: ReturnType<typeof useSongStore>): string | null {
+  return localStorage.getItem(songKey(store.currentId))
+}
 
 describe('useSongStore', () => {
   beforeEach(() => {
@@ -211,14 +217,200 @@ describe('useSongStore', () => {
     })
   })
 
+  describe('library', () => {
+    it('lists the open song as the only entry on a first visit', () => {
+      const store = useSongStore()
+      expect(store.library).toHaveLength(1)
+      expect(store.library[0]).toMatchObject({ id: store.currentId, name: 'Untitled', channels: 8, sections: 1 })
+      expect(readIndex(localStorage).currentId).toBe(store.currentId)
+      expect(storedSong(store)).toContain('"Untitled"')
+    })
+
+    it('adds new, imported and loaded songs as entries and keeps the old one', async () => {
+      vi.useFakeTimers()
+      const store = useSongStore()
+      store.rename('First')
+      const firstId = store.currentId
+      store.newSong()
+      expect(store.currentId).not.toBe(firstId)
+      // The pending autosave of "First" is flushed before switching.
+      expect(localStorage.getItem(songKey(firstId))).toContain('"First"')
+      store.importJson(JSON.stringify(createSong('Imported')))
+      store.loadSong(createSong('Loaded'))
+      expect(store.library.map((e) => e.name)).toEqual(['Loaded', 'Imported', 'Untitled', 'First'])
+      expect(storedSong(store)).toContain('"Loaded"')
+      // Opening a song is not an edit: the autosave that follows leaves it idle.
+      await vi.advanceTimersByTimeAsync(300)
+      expect(store.saveState).toBe('idle')
+    })
+
+    it('selects a saved song, flushing the pending edit of the current one', async () => {
+      vi.useFakeTimers()
+      const store = useSongStore()
+      store.rename('A')
+      const a = store.currentId
+      const sectionId = store.song.sections[0]!.id
+      const channelId = store.song.channels[0]!.id
+      store.toggleStep(sectionId, channelId, 2)
+      await vi.advanceTimersByTimeAsync(300)
+      store.newSong()
+      store.rename('B')
+      const b = store.currentId
+      await nextTick()
+      expect(store.selectSong(a)).toBe(true)
+      expect(store.song.name).toBe('A')
+      expect(store.song.sections[0]!.steps[channelId]).toEqual([2])
+      expect(store.currentId).toBe(a)
+      expect(readIndex(localStorage).currentId).toBe(a)
+      expect(localStorage.getItem(songKey(b))).toContain('"B"')
+      expect(store.library.map((e) => e.name)).toEqual(['B', 'A'])
+      expect(store.selectSong(a)).toBe(true)
+      const before = store.revision
+      expect(store.selectSong('nope')).toBe(false)
+      expect(store.revision).toBe(before)
+    })
+
+    it('drops an entry whose song is missing when it is selected', () => {
+      const store = useSongStore()
+      store.rename('A')
+      const a = store.currentId
+      store.newSong()
+      localStorage.removeItem(songKey(a))
+      expect(store.selectSong(a)).toBe(false)
+      expect(store.library.map((e) => e.id)).toEqual([store.currentId])
+      expect(readIndex(localStorage).entries.map((e) => e.id)).toEqual([store.currentId])
+    })
+
+    it('deletes songs, opening the most recent remaining one or a fresh song', async () => {
+      vi.useFakeTimers()
+      const store = useSongStore()
+      store.rename('A')
+      const a = store.currentId
+      await vi.advanceTimersByTimeAsync(300)
+      store.newSong()
+      store.rename('B')
+      const b = store.currentId
+      await vi.advanceTimersByTimeAsync(300)
+      store.newSong()
+      store.rename('C')
+      const c = store.currentId
+      await vi.advanceTimersByTimeAsync(300)
+
+      store.deleteSong(b)
+      expect(store.currentId).toBe(c)
+      expect(localStorage.getItem(songKey(b))).toBeNull()
+      expect(store.library.map((e) => e.name)).toEqual(['C', 'A'])
+
+      store.rename('C edited')
+      store.deleteSong(c)
+      await vi.advanceTimersByTimeAsync(300)
+      expect(store.currentId).toBe(a)
+      expect(store.song.name).toBe('A')
+      expect(localStorage.getItem(songKey(c))).toBeNull()
+      expect(store.library.map((e) => e.name)).toEqual(['A'])
+
+      store.deleteSong(a)
+      expect(store.currentId).not.toBe(a)
+      expect(store.song.name).toBe('Untitled')
+      expect(store.library.map((e) => e.name)).toEqual(['Untitled'])
+      expect(storedSong(store)).toContain('"Untitled"')
+      store.deleteSong('nope')
+      expect(store.library).toHaveLength(1)
+    })
+
+    it('migrates the pre-library autosave into the first entry', () => {
+      localStorage.setItem(LEGACY_SONG_KEY, JSON.stringify(createSong('From storage')))
+      const store = useSongStore()
+      expect(store.song.name).toBe('From storage')
+      expect(store.library.map((e) => e.name)).toEqual(['From storage'])
+      expect(storedSong(store)).toContain('"From storage"')
+      expect(localStorage.getItem(LEGACY_SONG_KEY)).toBeNull()
+    })
+
+    it('keeps the pre-library autosave when its first write fails', () => {
+      localStorage.setItem(LEGACY_SONG_KEY, JSON.stringify(createSong('Stuck')))
+      const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('QuotaExceededError')
+      })
+      const store = useSongStore()
+      expect(store.song.name).toBe('Stuck')
+      expect(store.saveState).toBe('error')
+      expect(localStorage.getItem(LEGACY_SONG_KEY)).toContain('"Stuck"')
+      setItem.mockRestore()
+    })
+
+    it('reopens the last open song, or the most recent one when that is gone', () => {
+      let store = useSongStore()
+      store.rename('A')
+      store.save()
+      const a = store.currentId
+      store.newSong()
+      store.rename('B')
+      store.save()
+      const b = store.currentId
+      store.selectSong(a)
+
+      setActivePinia(createPinia())
+      store = useSongStore()
+      expect(store.currentId).toBe(a)
+      expect(store.song.name).toBe('A')
+
+      localStorage.removeItem(songKey(a))
+      setActivePinia(createPinia())
+      store = useSongStore()
+      expect(store.currentId).toBe(b)
+      expect(store.song.name).toBe('B')
+      expect(readIndex(localStorage).currentId).toBe(b)
+    })
+
+    it('starts fresh when the index is corrupt', () => {
+      localStorage.setItem(LIBRARY_KEY, '{broken')
+      const store = useSongStore()
+      expect(store.song.name).toBe('Untitled')
+      expect(store.library).toHaveLength(1)
+    })
+
+    it('reports storage errors from library writes', () => {
+      const store = useSongStore()
+      store.rename('A')
+      store.save()
+      const a = store.currentId
+      store.newSong()
+      const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('QuotaExceededError')
+      })
+      store.selectSong(a)
+      expect(store.song.name).toBe('A')
+      expect(store.saveState).toBe('error')
+      store.deleteSong(a)
+      expect(store.saveState).toBe('error')
+      setItem.mockRestore()
+    })
+
+    it('works in memory only when storage is unavailable', () => {
+      vi.stubGlobal('localStorage', undefined)
+      const store = useSongStore()
+      expect(store.saveState).toBe('unavailable')
+      expect(store.library).toEqual([])
+      store.rename('Nowhere')
+      store.save()
+      store.newSong()
+      expect(store.library).toEqual([])
+      expect(store.selectSong('x')).toBe(false)
+      store.deleteSong(store.currentId)
+      expect(store.song.name).toBe('Untitled')
+      vi.unstubAllGlobals()
+    })
+  })
+
   describe('persistence', () => {
     it('autosaves to localStorage after a debounce', async () => {
       vi.useFakeTimers()
       const store = useSongStore()
       store.rename('Saved')
       await vi.advanceTimersByTimeAsync(300)
-      const raw = localStorage.getItem(STORAGE_KEY)
-      expect(raw).toContain('"Saved"')
+      expect(storedSong(store)).toContain('"Saved"')
+      expect(store.library[0]!.name).toBe('Saved')
     })
 
     it('flushes a pending autosave on pagehide', async () => {
@@ -226,9 +418,9 @@ describe('useSongStore', () => {
       const store = useSongStore()
       store.rename('Flushed')
       await nextTick()
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+      expect(storedSong(store)).not.toContain('"Flushed"')
       window.dispatchEvent(new Event('pagehide'))
-      expect(localStorage.getItem(STORAGE_KEY)).toContain('"Flushed"')
+      expect(storedSong(store)).toContain('"Flushed"')
       window.dispatchEvent(new Event('pagehide'))
       store.save()
     })
@@ -249,12 +441,13 @@ describe('useSongStore', () => {
       store.toggleStep(sectionId, channelId, 4)
       await vi.advanceTimersByTimeAsync(100)
       expect(store.saveState).toBe('pending')
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+      expect(JSON.parse(storedSong(store)!).sections[0].steps).toEqual({})
       await vi.advanceTimersByTimeAsync(300)
       expect(store.saveState).toBe('saved')
       // The write lands one debounce after the last edit; fake timers advance the clock with it.
       expect(store.lastSavedAt).toBe(start + AUTOSAVE_DEBOUNCE_MS)
-      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).sections[0].steps[channelId]).toEqual([3, 4])
+      expect(JSON.parse(storedSong(store)!).sections[0].steps[channelId]).toEqual([3, 4])
+      expect(store.library[0]!.updatedAt).toBe(start + AUTOSAVE_DEBOUNCE_MS)
     })
 
     it('reports an error when storage rejects the write', async () => {
@@ -271,15 +464,7 @@ describe('useSongStore', () => {
       store.rename('Fits now')
       await vi.advanceTimersByTimeAsync(300)
       expect(store.saveState).toBe('saved')
-      expect(localStorage.getItem(STORAGE_KEY)).toContain('"Fits now"')
-    })
-
-    it('loads the autosaved song and falls back when corrupt', () => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...createSong('From storage') }))
-      expect(loadInitialSong(localStorage).name).toBe('From storage')
-      localStorage.setItem(STORAGE_KEY, '{broken')
-      expect(loadInitialSong(localStorage).name).toBe('Untitled')
-      expect(loadInitialSong(null).name).toBe('Untitled')
+      expect(storedSong(store)).toContain('"Fits now"')
     })
   })
 })

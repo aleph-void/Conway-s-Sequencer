@@ -6,11 +6,13 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import SectionsPanel from './components/SectionsPanel.vue'
 import SequencerGrid from './components/SequencerGrid.vue'
 import SongIO from './components/SongIO.vue'
+import SongBrowser from './components/SongBrowser.vue'
 </script>
 
 <template>
   <div class="app">
     <AppHeader />
+    <SongBrowser />
     <main class="layout">
       <div class="top">
         <MidiPanel />
@@ -49,7 +51,8 @@ import SongIO from './components/SongIO.vue'
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 16px;
+  /* Extra room on the left for the Song browser's tab. */
+  padding: 16px 16px 16px 40px;
   max-width: 1600px;
   width: 100%;
   margin: 0 auto;
