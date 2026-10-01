@@ -10,7 +10,8 @@ iteration was built against, with what shipped and what is left.
 | --- | --- |
 | Client-side only | Vite + Vue 3 + Pinia, static build, no backend. Songs autosave to a `localStorage` library browsed from a slide-out drawer, export/import as JSON. |
 | Select the MIDI output in the GUI | `navigator.requestMIDIAccess({ sysex: false })`; outputs listed in a `<select>`, choice persisted, `statechange` tracked for hot-plug. |
-| Up to 63 channels | Hard cap `MAX_CHANNELS = 63`. A channel = one module output (shown 1-based). MIDI note = `baseNote + output`. The 64th output is reserved for the play gate. |
+| Up to 62 channels | Hard cap `MAX_CHANNELS = 62`. A channel = one module output (shown 1-based). MIDI note = `baseNote + output`. The last two outputs are reserved for the x16 clock and the play gate. |
+| x16 clock | `CLOCK_NOTE = 98` is pulsed `CLOCK_PULSES_PER_BEAT = 16` times per beat while playing, compiled into the event list alongside the gates so it follows every section's tempo and time signature. Half-period pulses, never below the 2 ms retrigger gap. Independent of the base note; mute and solo do not affect it. |
 | Play gate | `settings.playGateNote` (default `DEFAULT_PLAY_GATE_NOTE = 99`, the module's 64th output) goes note-on when playback starts or resumes and note-off when it pauses or stops (manual stop, end of a non-looping song, or panic). Independent of the base note. |
 | Transport | `stores/transport.ts` has three states: stopped (cursor at 0), playing, paused (cursor kept, gate low). Pause stops the scheduler where it is; resume restarts it from the cursor and re-raises any gate that spans the resume point; reset returns the cursor to 0 and keeps playing if it was playing. |
 | Channel = binary on/off of a MIDI note → gate | Note-on at the start of an on-step, note-off at the next off-step: a gate is held for the whole step, and consecutive on-steps form one long gate. |
@@ -87,7 +88,7 @@ Design choices worth knowing:
 4. **UI** — MIDI picker, transport, settings, sections table, grid with
    paint-drag, channel header, import/export. Component tests. ✅
 5. **E2E** — fake Web MIDI injected via `addInitScript`; tests for output
-   selection, section editing, drawing/persistence, 63-channel cap, play gate, playback
+   selection, section editing, drawing/persistence, 62-channel cap, x16 clock, play gate, playback
    message content and timing, panic, export/import. ✅
 6. **Deploy** — single workflow: test job on every push/PR, build with
    `BASE_PATH=/<repo>/` and deploy to Pages on `main`. ✅
@@ -97,7 +98,7 @@ Design choices worth knowing:
 | Layer | Tool | What it proves |
 | --- | --- | --- |
 | `core/*` | Vitest (node-ish, jsdom env) | Tempo inheritance, step/time math, note mapping, compile output (times, ordering, held/merged gates, mute, settings), scheduler behaviour with fake timers (look-ahead, loop wrap, stop → note-offs, live reload), JSON validation/clamping. |
-| `stores/*` | Vitest + Pinia | Every edit action and its invariants (63-channel cap, step trimming, id uniqueness), autosave/debounce/flush, the song library (open, new, delete, migration, storage failures), MIDI access states and hot-plug, transport ↔ scheduler ↔ MIDI integration. |
+| `stores/*` | Vitest + Pinia | Every edit action and its invariants (62-channel cap, step trimming, id uniqueness), autosave/debounce/flush, the song library (open, new, delete, migration, storage failures), MIDI access states and hot-plug, transport ↔ scheduler ↔ MIDI integration. |
 | `components/*` | Vitest + @vue/test-utils | Rendering, user interactions (click/drag/keyboard painting, inputs, buttons), empty and error states, keyboard shortcuts. |
 | App | Playwright, headless Chromium | Real DOM, real pointer drags, real `localStorage`, real downloads; MIDI messages asserted byte-for-byte via the fake port log, including timestamps 500 ms apart for steps 4 apart at 120 BPM. |
 

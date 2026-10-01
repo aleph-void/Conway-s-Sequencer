@@ -6,10 +6,12 @@
  */
 
 /**
- * The Conway's Game module exposes 64 trigger/gate outputs. The last one is reserved for
- * the play gate (see DEFAULT_PLAY_GATE_NOTE below), so songs get 63 sequenced channels.
+/**
+ * The Conway's Game module exposes 64 trigger/gate outputs. The last two are reserved for
+ * the x16 clock (CLOCK_NOTE in core/midi.ts) and the play gate (DEFAULT_PLAY_GATE_NOTE
+ * below), so songs get 62 sequenced channels.
  */
-export const MAX_CHANNELS = 63
+export const MAX_CHANNELS = 62
 export const MIN_TEMPO = 20
 export const MAX_TEMPO = 400
 export const DEFAULT_TEMPO = 120
@@ -21,9 +23,10 @@ export const TIME_SIGNATURE_UNITS = [2, 4, 8, 16] as const
 export const DEFAULT_BASE_NOTE = 36
 /**
  * Default note for the play gate: the module's 64th output. Its 64 outputs follow MIDI notes
- * from the base note upwards, so with the default base note (36) the last one is note 99.
+ * from the base note upwards, so with the default base note (36) the last one is note 99
+ * (the 63rd, note 98, carries the x16 clock).
  */
-export const DEFAULT_PLAY_GATE_NOTE = DEFAULT_BASE_NOTE + MAX_CHANNELS
+export const DEFAULT_PLAY_GATE_NOTE = DEFAULT_BASE_NOTE + MAX_CHANNELS + 1
 export const SONG_VERSION = 1 as const
 
 export type Subdivision = (typeof SUBDIVISIONS)[number]
@@ -52,7 +55,7 @@ export interface Section {
 export interface Channel {
   id: string
   name: string
-  /** 0-based module output (0..62). MIDI note = settings.baseNote + output. */
+  /** 0-based module output (0..61). MIDI note = settings.baseNote + output. */
   output: number
   muted: boolean
   /** Solo: while any channel is soloed, every channel that is not soloed is silenced. */

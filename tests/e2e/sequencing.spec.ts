@@ -1,4 +1,4 @@
-import { enableMidi, expect, midiLog, storedSong, test } from './fixtures'
+import { enableMidi, expect, midiLog, storedSong, test, type MidiLogEntry } from './fixtures'
 
 test.describe('sections', () => {
   test('adds sections that inherit tempo and reshape the grid', async ({ midiPage: page }) => {
@@ -125,12 +125,12 @@ test.describe('drawing gates', () => {
     })
   })
 
-  test('supports up to 63 channels', async ({ midiPage: page }) => {
+  test('supports up to 62 channels', async ({ midiPage: page }) => {
     const add = page.getByTestId('add-channel')
-    for (let i = 8; i < 63; i++) await add.click()
-    await expect(page.getByTestId('channel-count')).toContainText('63 / 63 channels')
+    for (let i = 8; i < 62; i++) await add.click()
+    await expect(page.getByTestId('channel-count')).toContainText('62 / 62 channels')
     await expect(add).toBeDisabled()
-    await expect(page.getByTestId('channel-output').last()).toHaveValue('63')
+    await expect(page.getByTestId('channel-output').last()).toHaveValue('62')
   })
 })
 
@@ -143,11 +143,23 @@ test.describe('playback', () => {
     await expect(page.getByTestId('play')).toContainText('Pause')
     await expect(page.getByTestId('section-readout')).toContainText('A · bar 1')
 
-    await expect.poll(async () => (await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(5)
+    // Wait until a full beat of the clock (16 pulses) plus the start of the next has gone out, and the
+    // second step's gate (which ends at 623 ms) has been handed over too.
+    const clockOns = (log: MidiLogEntry[]) => log.filter((e) => e.data[0] === 0x90 && e.data[1] === 98)
+    await expect
+      .poll(
+        async () => {
+          const log = await midiLog(page)
+          return clockOns(log).length >= 17 && log.filter((e) => e.data[1] !== 98).length >= 5
+        },
+        { timeout: 5000 },
+      )
+      .toBe(true)
     const log = await midiLog(page)
     expect(log.every((e) => e.port === 'conway')).toBe(true)
-    // The play gate (note 99, the module's 64th output) goes high before the first step.
-    const first = log.slice(0, 5).map((e) => e.data)
+    // The play gate (note 99) goes high before the first step. The clock is checked separately below.
+    const gates = log.filter((e) => e.data[1] !== 98)
+    const first = gates.slice(0, 5).map((e) => e.data)
     expect(first).toEqual([
       [0x90, 99, 100],
       [0x90, 36, 100],
@@ -155,8 +167,19 @@ test.describe('playback', () => {
       [0x90, 38, 100],
       [0x80, 38, 0],
     ])
-    expect(log[1]!.timestamp).toBeDefined()
-    expect(log[3]!.timestamp! - log[1]!.timestamp!).toBeCloseTo(500, -1)
+    expect(gates[1]!.timestamp).toBeDefined()
+    expect(gates[3]!.timestamp! - gates[1]!.timestamp!).toBeCloseTo(500, -1)
+
+    // The x16 clock (note 98) pulses 16 times per 500 ms beat, each pulse followed by its note-off.
+    const clock = log.filter((e) => e.data[1] === 98)
+    expect(clock[0]!.data).toEqual([0x90, 98, 100])
+    expect(clock[1]!.data).toEqual([0x80, 98, 0])
+    const ons = clockOns(log)
+    const t0 = ons[0]!.timestamp!
+    expect(t0).toBeCloseTo(gates[1]!.timestamp!, 1)
+    expect(ons.filter((e) => e.timestamp! < t0 + 499).length).toBe(16)
+    expect(ons[1]!.timestamp! - t0).toBeCloseTo(31.25, 1)
+    expect(ons[16]!.timestamp! - t0).toBeCloseTo(500, 1)
 
     await page.getByTestId('stop').click()
     await expect(page.getByTestId('play')).toContainText('Play')
@@ -186,14 +209,20 @@ test.describe('playback', () => {
     await page.getByTestId('play').click()
     await expect(page.getByTestId('play')).toContainText('Pause')
     // Resuming raises the gate again without replaying the first step.
-    const sinceResume = (await midiLog(page)).slice(-1)
-    expect(sinceResume[0]!.data).toEqual([0x90, 99, 100])
+    const resumed = await midiLog(page)
+    const gateOff = resumed.map((e) => e.data.join()).lastIndexOf([0x80, 99, 0].join())
+    const sinceResume = resumed.slice(gateOff + 1).map((e) => e.data)
+    expect(sinceResume[0]).toEqual([0x90, 99, 100])
+    expect(sinceResume.some((d) => d[0] === 0x90 && d[1] === 36)).toBe(false)
 
     await page.getByTestId('reset').click()
     await expect(page.getByTestId('play')).toContainText('Pause')
     await expect.poll(async () => (await midiLog(page)).some((m, i) => i > 3 && m.data[1] === 36 && m.data[0] === 0x90)).toBe(true)
 
+    // Let the cursor move off the start (the restart is anchored after the events already queued).
+    await page.waitForTimeout(300)
     await page.getByTestId('play').click()
+    await expect(page.getByTestId('play')).toContainText('Resume')
     await page.getByTestId('reset').click()
     await expect(page.getByTestId('play')).toContainText('Play')
     await expect(page.getByTestId('position')).toHaveText('0:00')
@@ -238,14 +267,14 @@ test.describe('playback', () => {
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('play')).toContainText('Play')
     const log = await midiLog(page)
-    const offs = log.filter((e) => e.data[0] === 0x80)
-    // Stop releases the play gate, then panic floods all 63 outputs plus the play gate.
-    expect(offs).toHaveLength(1 + 64)
-    expect(offs[0]!.data).toEqual([0x80, 99, 0])
-    expect(offs[1]!.data).toEqual([0x80, 36, 0])
-    expect(offs[63]!.data).toEqual([0x80, 98, 0])
-    expect(offs[64]!.data).toEqual([0x80, 99, 0])
-    expect(log.at(-1)!.data).toEqual([0xb0, 123, 0])
+    // Stop releases the play gate, then panic floods all 62 outputs, the clock and the play gate.
+    const flood = log.slice(-65).map((e) => e.data)
+    expect(log.at(-66)!.data).toEqual([0x80, 99, 0])
+    expect(flood[0]).toEqual([0x80, 36, 0])
+    expect(flood[61]).toEqual([0x80, 97, 0])
+    expect(flood[62]).toEqual([0x80, 98, 0])
+    expect(flood[63]).toEqual([0x80, 99, 0])
+    expect(flood[64]).toEqual([0xb0, 123, 0])
   })
 
   test('uses the configured MIDI channel, base note and play gate note', async ({ midiPage: page }) => {
@@ -258,10 +287,12 @@ test.describe('playback', () => {
     await page.getByTestId('play-gate-note').press('Tab')
     await page.getByTestId('cell-3-0-0').click()
     await page.getByTestId('play').click()
-    await expect.poll(async () => (await midiLog(page)).length).toBeGreaterThanOrEqual(2)
+    await expect.poll(async () => (await midiLog(page)).length).toBeGreaterThanOrEqual(3)
     const log = await midiLog(page)
     expect(log[0]!.data).toEqual([0x94, 100, 100])
     expect(log[1]!.data).toEqual([0x94, 63, 100])
+    // The clock ignores the base note and uses the configured channel.
+    expect(log[2]!.data).toEqual([0x94, 98, 100])
     await page.getByTestId('stop').click()
     expect((await midiLog(page)).at(-1)!.data).toEqual([0x84, 100, 0])
   })

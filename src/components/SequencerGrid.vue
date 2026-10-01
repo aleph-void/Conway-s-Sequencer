@@ -272,7 +272,7 @@ function cellClass(
 }
 
 .channel-row {
-  height: var(--cell-size);
+  height: var(--row-height);
   border-bottom: 1px solid var(--cell-line);
 }
 
@@ -284,7 +284,7 @@ function cellClass(
 .cell {
   flex: 0 0 var(--cell-size);
   width: var(--cell-size);
-  height: var(--cell-size);
+  height: var(--row-height);
   background: var(--cell);
   border-right: 1px solid var(--cell-line);
   cursor: crosshair;

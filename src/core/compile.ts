@@ -1,5 +1,5 @@
-import { noteOff, noteOn, outputToNote } from './midi'
-import { groupRuns, isChannelSilenced, type Song } from './song'
+import { CLOCK_NOTE, CLOCK_PULSES_PER_BEAT, noteOff, noteOn, outputToNote } from './midi'
+import { groupRuns, isChannelSilenced, type Section, type Song } from './song'
 import { buildTimeline, totalDuration, type SectionTiming } from './timing'
 
 export interface MidiEvent {
@@ -7,9 +7,13 @@ export interface MidiEvent {
   time: number
   kind: 'on' | 'off'
   note: number
+  /** The sequenced channel the event belongs to, or CLOCK_CHANNEL_ID for the x16 clock. */
   channelId: string
   data: number[]
 }
+
+/** Pseudo channel id carried by the clock's events; no real channel ever has this id. */
+export const CLOCK_CHANNEL_ID = 'clock'
 
 export interface CompiledSong {
   events: MidiEvent[]
@@ -27,6 +31,10 @@ export const MIN_GAP_SECONDS = 0.002
  * following step is also on, the gate is held through it, so a run of consecutive on-steps
  * is one gate that only drops at the next off-step (or the end of the section).
  *
+ * On top of the drawn gates, the x16 clock on CLOCK_NOTE pulses CLOCK_PULSES_PER_BEAT times
+ * per beat of every section, following each section's tempo and time signature. Mute and
+ * solo never touch it.
+ *
  * Pure: the same song always yields the same events.
  */
 export function compileSong(song: Song): CompiledSong {
@@ -37,6 +45,7 @@ export function compileSong(song: Song): CompiledSong {
   for (const timing of timeline) {
     const section = song.sections[timing.index]
     if (!section) continue
+    pushClock(events, timing, section, midiChannel, velocity)
     for (const channel of song.channels) {
       if (isChannelSilenced(channel, song.channels)) continue
       const steps = section.steps[channel.id]
@@ -59,6 +68,25 @@ export function compileSong(song: Song): CompiledSong {
   // Sort by time; at equal times send note-offs before note-ons so a new gate on the same note works.
   events.sort((a, b) => a.time - b.time || rank(a) - rank(b) || a.note - b.note)
   return { events, duration: totalDuration(timeline), timeline }
+}
+
+/**
+ * Emit the clock pulses for one section: CLOCK_PULSES_PER_BEAT evenly spaced note-on/off pairs
+ * per beat. A pulse is high for half its period (a 50 % duty cycle), but never shorter than
+ * MIN_GAP_SECONDS and always off before the next pulse starts.
+ */
+function pushClock(events: MidiEvent[], timing: SectionTiming, section: Section, midiChannel: number, velocity: number) {
+  const beatDuration = timing.stepDuration * section.subdivision
+  const beats = section.timeSignature.beats * section.bars
+  const period = beatDuration / CLOCK_PULSES_PER_BEAT
+  const width = Math.max(MIN_GAP_SECONDS, Math.min(period / 2, period - MIN_GAP_SECONDS))
+  const on = noteOn(midiChannel, CLOCK_NOTE, velocity)
+  const off = noteOff(midiChannel, CLOCK_NOTE)
+  for (let pulse = 0; pulse < beats * CLOCK_PULSES_PER_BEAT; pulse++) {
+    const start = timing.startTime + pulse * period
+    events.push({ time: start, kind: 'on', note: CLOCK_NOTE, channelId: CLOCK_CHANNEL_ID, data: on })
+    events.push({ time: start + width, kind: 'off', note: CLOCK_NOTE, channelId: CLOCK_CHANNEL_ID, data: off })
+  }
 }
 
 function rank(e: MidiEvent): number {

@@ -75,7 +75,7 @@ function remove() {
   display: flex;
   align-items: center;
   gap: 3px;
-  height: var(--cell-size);
+  height: var(--row-height);
   padding: 0 6px 0 4px;
   width: var(--row-head-width);
   font-size: 12px;
@@ -90,7 +90,7 @@ function remove() {
   flex: 1;
   min-width: 0;
   padding: 1px 6px;
-  height: 20px;
+  height: 26px;
   background: transparent;
   border-color: transparent;
 }
@@ -104,13 +104,14 @@ function remove() {
 .out input {
   width: 3.2em;
   padding: 1px 4px;
-  height: 20px;
+  height: 26px;
   text-align: right;
 }
 
 .icon {
   padding: 0 5px;
-  height: 20px;
+  height: 26px;
+  min-width: 24px;
   font-size: 11px;
 }
 

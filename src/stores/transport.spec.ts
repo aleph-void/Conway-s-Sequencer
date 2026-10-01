@@ -43,7 +43,7 @@ describe('useTransportStore', () => {
     expect(out.sent[1]).toEqual([[0x90, 36, 100], 0])
     await vi.advanceTimersByTimeAsync(600)
     // Each gate holds for its whole 125 ms step, minus the 2 ms gap before the next step.
-    expect(out.sent.slice(1).map((s) => s[1])).toEqual([0, 123, 500, 623])
+    expect(out.sent.filter((s) => s[0][1] === 36).map((s) => s[1])).toEqual([0, 123, 500, 623])
     expect(transport.positionSeconds).toBeCloseTo(0.6, 1)
     expect(transport.currentStep).toBe(4)
     expect(transport.position?.sectionIndex).toBe(0)
@@ -53,6 +53,24 @@ describe('useTransportStore', () => {
     expect(transport.positionSeconds).toBe(0)
     expect(transport.currentStep).toBe(-1)
     expect(out.sent.at(-1)).toEqual([[0x80, 99, 0], 600])
+  })
+
+  it('pulses the x16 clock on note 98 sixteen times per beat while playing', async () => {
+    const transport = useTransportStore()
+    transport.play()
+    await vi.advanceTimersByTimeAsync(1000)
+    const ons = out.sent.filter((s) => s[0][0] === 0x90 && s[0][1] === 98).map((s) => s[1]!)
+    const offs = out.sent.filter((s) => s[0][0] === 0x80 && s[0][1] === 98).map((s) => s[1]!)
+    // 120 BPM: a beat is 500 ms, so a pulse every 31.25 ms, high for half of that.
+    expect(ons.filter((t) => t < 500)).toHaveLength(16)
+    expect(ons.slice(0, 3)).toEqual([0, 31.25, 62.5])
+    expect(ons[16]).toBe(500)
+    expect(offs.slice(0, 2)).toEqual([15.625, 46.875])
+    expect(out.sent[0]).toEqual([[0x90, 99, 100], 0]) // the play gate still goes first
+    transport.stop()
+    // Nothing on the clock note is sent after stop, apart from releasing a pulse that was high.
+    const after = out.sent.slice(out.sent.findIndex((s) => s[0][1] === 99 && s[0][0] === 0x80))
+    expect(after.filter((s) => s[0][1] === 98 && s[0][0] === 0x90)).toHaveLength(0)
   })
 
   it('holds the play gate on note 99 while playing and releases it on stop', () => {
@@ -135,7 +153,7 @@ describe('useTransportStore', () => {
     expect(transport.positionSeconds).toBeCloseTo(0.6, 2)
     expect(transport.currentStep).toBe(4)
     expect(transport.position?.sectionIndex).toBe(0)
-    // Pausing drops the gate...
+    // Pausing drops the gate (after the note-off of any clock pulse that was high)...
     expect(out.sent.at(-1)).toEqual([[0x80, 99, 0], 600])
     const sentBefore = out.sent.length
     // ...and nothing more goes out while paused.
@@ -149,7 +167,7 @@ describe('useTransportStore', () => {
     // The gate goes high again; the step at 0 s is not replayed, the one at 1.0 s follows 400 ms later.
     expect(out.sent[sentBefore]).toEqual([[0x90, 99, 100], 1600])
     await vi.advanceTimersByTimeAsync(500)
-    const ons = out.sent.slice(sentBefore + 1).filter((s) => s[0][0] === 0x90)
+    const ons = out.sent.slice(sentBefore + 1).filter((s) => s[0][0] === 0x90 && s[0][1] === 36)
     expect(ons).toEqual([[[0x90, 36, 100], 2000]])
     expect(transport.positionSeconds).toBeCloseTo(1.1, 1)
   })
@@ -163,11 +181,12 @@ describe('useTransportStore', () => {
     transport.play()
     await vi.advanceTimersByTimeAsync(500)
     transport.pause()
-    // The held gate is dropped on pause (after the gate release, which goes first).
-    expect(out.sent.slice(-2).map((s) => s[0])).toEqual([[0x80, 36, 0], [0x80, 99, 0]])
+    const gates = () => out.sent.filter((s) => s[0][1] === 36 || s[0][1] === 99)
+    // The held gate is dropped on pause, then the play gate is released.
+    expect(gates().slice(-2).map((s) => s[0])).toEqual([[0x80, 36, 0], [0x80, 99, 0]])
     transport.resume()
     // ...and raised again on resume, right after the play gate.
-    expect(out.sent.slice(-2)).toEqual([[[0x90, 99, 100], 500], [[0x90, 36, 100], 500]])
+    expect(gates().slice(-2)).toEqual([[[0x90, 99, 100], 500], [[0x90, 36, 100], 500]])
   })
 
   it('reset returns the cursor to the start and keeps playing', async () => {
@@ -186,11 +205,15 @@ describe('useTransportStore', () => {
     expect(transport.playing).toBe(true)
     expect(transport.positionSeconds).toBe(0)
     expect(transport.currentStep).toBe(0)
-    // The first step plays again, without the gate being released and re-raised.
-    expect(out.sent.at(-1)).toEqual([[0x90, 36, 100], 700])
+    // The first step plays again, without the gate being released and re-raised. The new pass is
+    // anchored after the clock pulses already handed to the output (up to 120 ms ahead).
+    const restart = out.sent.filter((s) => s[0][1] === 36).at(-1)!
+    expect(restart[0]).toEqual([0x90, 36, 100])
+    expect(restart[1]).toBeGreaterThanOrEqual(700)
+    expect(restart[1]).toBeLessThanOrEqual(820)
     expect(gates()).toBe(before)
     await vi.advanceTimersByTimeAsync(300)
-    expect(transport.positionSeconds).toBeCloseTo(0.3, 1)
+    expect(transport.positionSeconds).toBeCloseTo((1000 - restart[1]!) / 1000, 2)
   })
 
   it('reset while paused returns to the stopped state', async () => {
@@ -268,12 +291,14 @@ describe('useTransportStore', () => {
     transport.play()
     transport.panic()
     expect(transport.playing).toBe(false)
-    // Stop releases the play gate, then the flood covers 63 outputs plus the play gate again.
-    const offs = out.sent.filter((s) => s[0][0] === 0x80).map((s) => s[0])
-    expect(offs).toHaveLength(1 + 64)
-    expect(offs[0]).toEqual([0x80, 99, 0])
-    expect(offs[63]).toEqual([0x80, 98, 0])
-    expect(offs[64]).toEqual([0x80, 99, 0])
+    // Stop releases the play gate, then the flood covers 62 outputs, the clock and the play gate again.
+    const flood = out.sent.slice(-65).map((s) => s[0])
+    expect(out.sent.at(-66)![0]).toEqual([0x80, 99, 0])
+    expect(flood[0]).toEqual([0x80, 36, 0])
+    expect(flood[61]).toEqual([0x80, 97, 0])
+    expect(flood[62]).toEqual([0x80, 98, 0])
+    expect(flood[63]).toEqual([0x80, 99, 0])
+    expect(flood[64]).toEqual([0xb0, 123, 0])
   })
 
   it('reacts to loop setting changes while playing', async () => {
