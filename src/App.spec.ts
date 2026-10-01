@@ -18,6 +18,27 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Nervous Squirrel')
   })
 
+  it('collapses the settings drawer and remembers the choice', async () => {
+    localStorage.clear()
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    const toggle = wrapper.get('[data-testid="toggle-settings"]')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('[data-testid="settings-drawer"]').exists()).toBe(true)
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="settings-drawer"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sections-table"]').exists()).toBe(false)
+    // The editor and transport stay available while the drawer is closed.
+    expect(wrapper.find('[data-testid="grid"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="play"]').exists()).toBe(true)
+
+    const again = mount(App, { global: { plugins: [createPinia()] } })
+    expect(again.find('[data-testid="settings-drawer"]').exists()).toBe(false)
+    await again.get('[data-testid="toggle-settings"]').trigger('click')
+    expect(again.find('[data-testid="sections-table"]').exists()).toBe(true)
+  })
+
   it('renames the song from the header', async () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } })
     await wrapper.get('[data-testid="song-name"]').setValue('My Patch')

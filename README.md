@@ -27,6 +27,9 @@ backend, and songs autosave to local storage.
   MIDI port with explicit timestamps, so JavaScript timer jitter never reaches
   the module. Edits while playing are picked up live.
 - **Loop, panic (Esc), Space to play/stop**, and JSON export/import.
+- **Editor-first layout.** The grid fills the viewport below a one-line
+  toolbar (MIDI output + transport); sections, module settings and song files
+  live in a collapsible settings drawer whose state is remembered.
 
 ## Browser support
 

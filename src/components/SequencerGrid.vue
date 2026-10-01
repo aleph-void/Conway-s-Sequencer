@@ -64,7 +64,7 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 </script>
 
 <template>
-  <section class="panel grid-panel" aria-labelledby="grid-heading">
+  <section class="panel grid-panel" aria-labelledby="grid-heading" data-testid="grid-panel">
     <div class="head">
       <h2 id="grid-heading">Gates</h2>
       <span class="muted count" data-testid="channel-count">
@@ -149,7 +149,11 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 
 <style scoped>
 .grid-panel {
-  padding-bottom: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 12px;
 }
 
 .head {
@@ -169,8 +173,9 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 }
 
 .scroller {
+  flex: 1 1 auto;
+  min-height: 160px;
   overflow: auto;
-  max-height: 70vh;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);

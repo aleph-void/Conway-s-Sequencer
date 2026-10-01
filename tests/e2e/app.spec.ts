@@ -10,6 +10,28 @@ test.describe('shell', () => {
     await expect(page.getByTestId('sections-table').locator('tbody tr')).toHaveCount(1)
   })
 
+  test('gives the grid most of the viewport and lets the settings drawer collapse', async ({ midiPage: page }) => {
+    const viewport = page.viewportSize()!
+    const gridPanel = page.getByTestId('grid-panel')
+    const withDrawer = (await gridPanel.boundingBox())!
+    await expect(page.getByTestId('settings-drawer')).toBeVisible()
+
+    await page.getByTestId('toggle-settings').click()
+    await expect(page.getByTestId('settings-drawer')).toHaveCount(0)
+    await expect(page.getByTestId('toggle-settings')).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('play')).toBeVisible()
+    const collapsed = (await gridPanel.boundingBox())!
+    expect(collapsed.height).toBeGreaterThan(withDrawer.height)
+    expect(collapsed.height).toBeGreaterThan(viewport.height * 0.6)
+    // Nothing scrolls off-screen: the shell is sized to the viewport.
+    expect(collapsed.y + collapsed.height).toBeLessThanOrEqual(viewport.height)
+
+    await page.reload()
+    await expect(page.getByTestId('settings-drawer')).toHaveCount(0)
+    await page.getByTestId('toggle-settings').click()
+    await expect(page.getByTestId('sections-table')).toBeVisible()
+  })
+
   test('explains when Web MIDI is unavailable', async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'requestMIDIAccess', { configurable: true, value: undefined })
