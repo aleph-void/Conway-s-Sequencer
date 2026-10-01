@@ -38,6 +38,7 @@
   --cell-alt: #16161f;
   --cell-line: #0a0a0f;
   --cell-on: var(--accent-light);
+  --cell-on-edge: rgba(0, 0, 0, 0.35);
   --cell-on-playhead: var(--accent-bright);
   --playhead: var(--accent-glow);
   --cell-size: 22px;
