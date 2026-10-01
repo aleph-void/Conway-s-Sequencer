@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest'
 import App from './App.vue'
 
 describe('App', () => {
-  it('mounts every panel with alephvoid.com branding', () => {
+  it('mounts every panel with Aleph Void branding', () => {
     localStorage.clear()
     const wrapper = mount(App, { global: { plugins: [createPinia()] } })
     expect(wrapper.get('h1').text()).toBe("Conway's Sequencer")
     expect(wrapper.findAll('a[href="https://alephvoid.com"]').length).toBeGreaterThanOrEqual(2)
+    expect(wrapper.findAll('[data-testid="brand-logo"]').length).toBeGreaterThanOrEqual(2)
+    expect(wrapper.text()).toContain('Aleph Void, LLC')
     expect(wrapper.find('[data-testid="enable-midi"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="play"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="sections-table"]').exists()).toBe(true)

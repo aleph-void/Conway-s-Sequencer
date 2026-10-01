@@ -6,6 +6,9 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import SectionsPanel from './components/SectionsPanel.vue'
 import SequencerGrid from './components/SequencerGrid.vue'
 import SongIO from './components/SongIO.vue'
+import BrandLogo from './components/BrandLogo.vue'
+
+const year = new Date().getFullYear()
 </script>
 
 <template>
@@ -24,14 +27,19 @@ import SongIO from './components/SongIO.vue'
       <SequencerGrid />
     </main>
     <footer class="footer">
-      <span>
+      <a class="footer-brand" href="https://alephvoid.com" target="_blank" rel="noopener">
+        <BrandLogo :size="28" />
+        <span>Aleph Void</span>
+      </a>
+      <span class="footer-copy">
         Built for the
         <a href="https://www.nervoussquirrel.com/conways_game.html" target="_blank" rel="noopener">Nervous Squirrel
           Conway's Game</a>
         eurorack module.
       </span>
-      <span>
-        &copy; <a href="https://alephvoid.com" target="_blank" rel="noopener">alephvoid.com</a>
+      <span class="footer-copy">
+        &copy; {{ year }} <a href="https://alephvoid.com" target="_blank" rel="noopener">Aleph Void, LLC</a>. All rights
+        reserved.
       </span>
     </footer>
   </div>
@@ -78,11 +86,35 @@ import SongIO from './components/SongIO.vue'
 
 .footer {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 16px 20px;
-  color: var(--text-dim);
+  gap: 12px 24px;
+  padding: 16px 20px 22px;
+  color: var(--text-muted);
   font-size: 12px;
   border-top: 1px solid var(--border);
+}
+
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.footer-brand:hover {
+  color: var(--text);
+}
+
+.footer-copy a {
+  color: var(--text-dim);
+}
+
+.footer-copy a:hover {
+  color: var(--accent-light);
 }
 </style>

@@ -1,10 +1,11 @@
 import { expect, test } from './fixtures'
 
 test.describe('shell', () => {
-  test('loads with alephvoid.com branding and a default song', async ({ midiPage: page }) => {
-    await expect(page).toHaveTitle(/Conway's Sequencer · alephvoid.com/)
+  test('loads with Aleph Void branding and a default song', async ({ midiPage: page }) => {
+    await expect(page).toHaveTitle(/Conway's Sequencer · Aleph Void/)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText("Conway's Sequencer")
     await expect(page.locator('a[href="https://alephvoid.com"]').first()).toBeVisible()
+    await expect(page.getByTestId('brand-logo').first()).toBeVisible()
     await expect(page.getByTestId('channel-count')).toContainText('8 / 64 channels')
     await expect(page.getByTestId('sections-table').locator('tbody tr')).toHaveCount(1)
   })

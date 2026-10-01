@@ -15,7 +15,7 @@ iteration was built against, with what shipped and what is left.
 | Sections with tempo, time signature, bars | `Section { tempo: number \| null, timeSignature {beats, unit}, bars, subdivision }`. `tempo: null` inherits from the previous section (first section falls back to 120). |
 | Draw "on" bars like a piano roll | Grid: rows = channels, columns = every step of every section. Click toggles, drag paints, keyboard toggles. |
 | Comprehensive tests, GitHub Actions → GitHub Pages | Vitest unit/component tests with coverage thresholds, Playwright e2e against the built app with a fake Web MIDI, one workflow that tests then deploys. |
-| alephvoid.com branding | Header mark + link, footer, page title, favicon; dark palette with a single green accent. |
+| alephvoid.com branding | Aleph Void logo mark (from the alephvoid.com repo) in the header and footer, page title, favicon; the site's near-black palette with the violet accent (`#6d28d9` / `#8b5cf6`), Inter for UI text and JetBrains Mono for labels. Tokens live in `src/style.css`. |
 
 ### Module facts the design relies on
 

@@ -217,7 +217,7 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 .section-label {
   height: 32px;
   padding: 2px 8px;
-  border-left: 2px solid var(--accent-dim);
+  border-left: 2px solid var(--accent);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -245,12 +245,12 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
 
 .channel-row {
   height: var(--cell-size);
-  border-bottom: 1px solid #0f141b;
+  border-bottom: 1px solid var(--cell-line);
 }
 
 .channel-row.is-muted .cell.on {
   background: var(--accent-dim);
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .cell {
@@ -258,7 +258,7 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
   width: var(--cell-size);
   height: var(--cell-size);
   background: var(--cell);
-  border-right: 1px solid #0b0f14;
+  border-right: 1px solid var(--cell-line);
   cursor: crosshair;
 }
 
@@ -276,13 +276,17 @@ function cellClass(sectionId: string, channelId: string, step: number, globalSte
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
+.cell.on:hover {
+  filter: brightness(1.15);
+}
+
 .cell.playhead {
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent-light);
   background-color: var(--playhead);
 }
 
 .cell.playhead.on {
-  background-color: #8ff0c4;
+  background-color: var(--cell-on-playhead);
 }
 
 .cell:focus-visible {
