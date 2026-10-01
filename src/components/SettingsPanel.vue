@@ -49,23 +49,11 @@ function num(event: Event): number {
           @change="store.updateSettings({ velocity: num($event) })"
         />
       </label>
-      <label>
-        <span>Gate length</span>
-        <input
-          type="number"
-          min="5"
-          max="100"
-          step="5"
-          :value="Math.round(settings.gateLength * 100)"
-          data-testid="gate-length"
-          @change="store.updateSettings({ gateLength: num($event) / 100 })"
-        />
-      </label>
     </div>
     <p class="muted note">
       Output 1 = {{ noteName(settings.baseNote) }} ({{ settings.baseNote }}), output 64 =
-      {{ noteName(settings.baseNote + MAX_CHANNELS - 1) }} ({{ settings.baseNote + MAX_CHANNELS - 1 }}). Gate length is
-      the percentage of a step a retriggered gate stays high.
+      {{ noteName(settings.baseNote + MAX_CHANNELS - 1) }} ({{ settings.baseNote + MAX_CHANNELS - 1 }}). A gate stays
+      high for every step it is drawn on and only drops at the next empty step.
     </p>
   </section>
 </template>

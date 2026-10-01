@@ -48,16 +48,6 @@ function remove() {
     >
       M
     </button>
-    <button
-      class="icon toggle"
-      :class="{ active: channel.gateMode === 'tie' }"
-      :aria-pressed="channel.gateMode === 'tie'"
-      :title="channel.gateMode === 'tie' ? 'Tie: consecutive steps form one long gate' : 'Retrigger: every step is its own gate'"
-      data-testid="channel-gate-mode"
-      @click="store.updateChannel(channel.id, { gateMode: channel.gateMode === 'tie' ? 'retrigger' : 'tie' })"
-    >
-      {{ channel.gateMode === 'tie' ? '⎯' : '⫶' }}
-    </button>
     <button class="icon" title="Move up" :disabled="index === 0" data-testid="channel-up" @click="store.moveChannel(channel.id, -1)">↑</button>
     <button class="icon" title="Move down" :disabled="index === total - 1" data-testid="channel-down" @click="store.moveChannel(channel.id, 1)">↓</button>
     <button class="icon danger" title="Remove channel" data-testid="channel-remove" @click="remove">✕</button>

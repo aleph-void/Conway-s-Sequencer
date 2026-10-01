@@ -20,7 +20,6 @@ export const SONG_VERSION = 1 as const
 
 export type Subdivision = (typeof SUBDIVISIONS)[number]
 export type TimeSignatureUnit = (typeof TIME_SIGNATURE_UNITS)[number]
-export type GateMode = 'retrigger' | 'tie'
 
 export interface TimeSignature {
   /** Numerator: beats per bar. */
@@ -48,11 +47,6 @@ export interface Channel {
   /** 0-based module output (0..63). MIDI note = settings.baseNote + output. */
   output: number
   muted: boolean
-  /**
-   * `retrigger`: every on-step produces its own gate of `settings.gateLength` × step.
-   * `tie`: consecutive on-steps are merged into one long gate.
-   */
-  gateMode: GateMode
 }
 
 export interface SongSettings {
@@ -62,8 +56,6 @@ export interface SongSettings {
   baseNote: number
   /** Note-on velocity 1..127. */
   velocity: number
-  /** Gate length in retrigger mode as a fraction of one step (0.05..1). */
-  gateLength: number
   loop: boolean
 }
 
@@ -84,7 +76,7 @@ export function generateId(prefix = 'id'): string {
 }
 
 export function defaultSettings(): SongSettings {
-  return { midiChannel: 1, baseNote: DEFAULT_BASE_NOTE, velocity: 100, gateLength: 0.5, loop: true }
+  return { midiChannel: 1, baseNote: DEFAULT_BASE_NOTE, velocity: 100, loop: true }
 }
 
 export function createChannel(output: number, overrides: Partial<Channel> = {}): Channel {
@@ -93,7 +85,6 @@ export function createChannel(output: number, overrides: Partial<Channel> = {}):
     name: `Out ${output + 1}`,
     output,
     muted: false,
-    gateMode: 'retrigger',
     ...overrides,
   }
 }
@@ -156,7 +147,11 @@ export function clampStepsToLength(steps: Record<string, number[]>, length: numb
   return out
 }
 
-/** Group a sorted list of on-steps into inclusive [start, end] runs of consecutive steps. */
+/**
+ * Group a list of on-steps into inclusive [start, end] runs of consecutive steps.
+ * Each run becomes one gate: it goes high at the first step and stays high until the
+ * next off-step.
+ */
 export function groupRuns(steps: readonly number[]): Array<[number, number]> {
   const sorted = [...new Set(steps)].sort((a, b) => a - b)
   const runs: Array<[number, number]> = []

@@ -30,14 +30,13 @@ describe('ChannelHeader', () => {
     expect(wrapper.get('.out').attributes('title')).toContain('47')
   })
 
-  it('toggles mute and gate mode', async () => {
+  it('toggles mute', async () => {
     const { channel, wrapper } = mountFirst()
     await wrapper.get('[data-testid="channel-mute"]').trigger('click')
     expect(channel.muted).toBe(true)
-    await wrapper.get('[data-testid="channel-gate-mode"]').trigger('click')
-    expect(channel.gateMode).toBe('tie')
-    await wrapper.get('[data-testid="channel-gate-mode"]').trigger('click')
-    expect(channel.gateMode).toBe('retrigger')
+    await wrapper.get('[data-testid="channel-mute"]').trigger('click')
+    expect(channel.muted).toBe(false)
+    expect(wrapper.find('[data-testid="channel-gate-mode"]').exists()).toBe(false)
   })
 
   it('moves and removes the channel', async () => {

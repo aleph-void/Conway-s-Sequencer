@@ -48,8 +48,8 @@ describe('useSongStore', () => {
     it('updates and clamps channel fields', () => {
       const store = useSongStore()
       const id = store.song.channels[0]!.id
-      store.updateChannel(id, { name: 'Kick', output: 99, gateMode: 'tie', muted: true })
-      expect(store.channelById(id)).toMatchObject({ name: 'Kick', output: 63, gateMode: 'tie', muted: true })
+      store.updateChannel(id, { name: 'Kick', output: 99, muted: true })
+      expect(store.channelById(id)).toMatchObject({ name: 'Kick', output: 63, muted: true })
       store.updateChannel('missing', { name: 'x' })
     })
 

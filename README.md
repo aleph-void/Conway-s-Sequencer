@@ -21,8 +21,9 @@ backend, and songs autosave to local storage.
   section's tempo.
 - **Draw gates** by clicking or click-dragging across the grid; Enter/Space
   toggles the focused cell for keyboard users.
-- **Retrigger or tie** per channel: every step is its own gate, or consecutive
-  steps merge into one long gate.
+- **Gates follow the grid.** A gate goes high for the whole of every step it is
+  drawn on, and consecutive on-steps hold it high as one long gate until the
+  next empty step.
 - **Sample-accurate-ish timing**: a look-ahead scheduler hands messages to the
   MIDI port with explicit timestamps, so JavaScript timer jitter never reaches
   the module. Edits while playing are picked up live.
@@ -65,8 +66,8 @@ import and out-of-range values are clamped; see `src/core/serialization.ts`.
 {
   "version": 1,
   "name": "Untitled",
-  "settings": { "midiChannel": 1, "baseNote": 36, "velocity": 100, "gateLength": 0.5, "loop": true },
-  "channels": [{ "id": "ch_1", "name": "Kick", "output": 0, "muted": false, "gateMode": "retrigger" }],
+  "settings": { "midiChannel": 1, "baseNote": 36, "velocity": 100, "loop": true },
+  "channels": [{ "id": "ch_1", "name": "Kick", "output": 0, "muted": false }],
   "sections": [
     {
       "id": "sec_1",

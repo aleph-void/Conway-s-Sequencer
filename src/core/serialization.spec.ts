@@ -31,7 +31,7 @@ describe('normalizeSong', () => {
   it('fills defaults for missing fields', () => {
     const song = normalizeSong({ channels: [{}], sections: [{}] })
     expect(song.name).toBe('Untitled')
-    expect(song.channels[0]).toMatchObject({ output: 0, name: 'Out 1', muted: false, gateMode: 'retrigger' })
+    expect(song.channels[0]).toMatchObject({ output: 0, name: 'Out 1', muted: false })
     expect(song.sections[0]).toMatchObject({
       tempo: null,
       timeSignature: { beats: 4, unit: 4 },
@@ -39,17 +39,17 @@ describe('normalizeSong', () => {
       subdivision: 4,
       steps: {},
     })
-    expect(song.settings).toEqual({ midiChannel: 1, baseNote: 36, velocity: 100, gateLength: 0.5, loop: true })
+    expect(song.settings).toEqual({ midiChannel: 1, baseNote: 36, velocity: 100, loop: true })
   })
 
   it('clamps numeric ranges', () => {
     const song = normalizeSong({
       channels: [],
       sections: [{ tempo: 9999, bars: 0, timeSignature: { beats: 99, unit: 5 }, subdivision: 7 }],
-      settings: { midiChannel: 42, baseNote: 120, velocity: 0, gateLength: 3 },
+      settings: { midiChannel: 42, baseNote: 120, velocity: 0 },
     })
     expect(song.sections[0]).toMatchObject({ tempo: 400, bars: 1, timeSignature: { beats: 32, unit: 4 }, subdivision: 4 })
-    expect(song.settings).toMatchObject({ midiChannel: 16, baseNote: 64, velocity: 1, gateLength: 1 })
+    expect(song.settings).toMatchObject({ midiChannel: 16, baseNote: 64, velocity: 1 })
   })
 
   it('rejects channel outputs outside the module range', () => {
@@ -78,9 +78,15 @@ describe('normalizeSong', () => {
     expect(song.sections[0]!.id).not.toBe(song.sections[1]!.id)
   })
 
-  it('keeps valid tie mode and muted flags', () => {
-    const song = normalizeSong({ channels: [{ output: 1, gateMode: 'tie', muted: true }], sections: [] })
-    expect(song.channels[0]).toMatchObject({ gateMode: 'tie', muted: true })
+  it('keeps the muted flag and drops the legacy gateMode and gateLength fields', () => {
+    const song = normalizeSong({
+      channels: [{ output: 1, gateMode: 'tie', muted: true }],
+      sections: [],
+      settings: { gateLength: 0.25 },
+    })
+    expect(song.channels[0]).toMatchObject({ muted: true })
+    expect(song.channels[0]).not.toHaveProperty('gateMode')
+    expect(song.settings).not.toHaveProperty('gateLength')
   })
 })
 
