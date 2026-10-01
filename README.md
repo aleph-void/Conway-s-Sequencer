@@ -16,10 +16,10 @@ backend, and songs autosave to local storage.
 - **Up to 62 channels** on the module's 64 outputs. Each channel maps to an
   output number (1–62), which becomes MIDI note `baseNote + output - 1`
   (output 1 = C2 / note 36 by default, as the module expects).
-- **x16 clock.** MIDI note 99 is pulsed 16 times per beat (note-on then note-off,
+- **x16 clock.** MIDI note 98 is pulsed 16 times per beat (note-on then note-off,
   50 % duty cycle) for as long as the song is playing, following each section's
   tempo and time signature, so one module output can clock other gear.
-- **Play gate.** MIDI note 100 is held on for as long as the song is playing and
+- **Play gate.** MIDI note 99 is held on for as long as the song is playing and
   released when it stops, so the module's last output can act as a run/stop gate.
 - **Sections** with their own tempo, time signature, bar count and step
   resolution. Leave a section's tempo blank and it inherits the previous

@@ -137,7 +137,7 @@ describe('compileSong', () => {
   })
 
   describe('x16 clock', () => {
-    it('pulses note 99 sixteen times per beat with a half-period width', () => {
+    it('pulses note 98 sixteen times per beat with a half-period width', () => {
       const { events } = compileSong(song()) // 1 bar of 4/4 at 120 BPM: 4 beats of 0.5 s
       const pulses = clock(events)
       expect(pulses).toHaveLength(2 * 16 * 4)

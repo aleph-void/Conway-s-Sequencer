@@ -9,13 +9,13 @@ export const CC_ALL_SOUND_OFF = 120
  * Fixed note for the play gate: held high (note-on) for as long as the song is playing and
  * released (note-off) the moment it stops. Independent of the base note setting.
  */
-export const PLAY_GATE_NOTE = 100
+export const PLAY_GATE_NOTE = 99
 /**
  * Fixed note for the x16 clock: pulsed CLOCK_PULSES_PER_BEAT times per beat for as long as
  * the song is playing, so the module gets a steady clock next to the sequenced gates.
  * Independent of the base note setting.
  */
-export const CLOCK_NOTE = 99
+export const CLOCK_NOTE = 98
 export const CLOCK_PULSES_PER_BEAT = 16
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const

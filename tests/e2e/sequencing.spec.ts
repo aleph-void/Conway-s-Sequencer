@@ -144,15 +144,15 @@ test.describe('playback', () => {
     await expect(page.getByTestId('section-readout')).toContainText('A · bar 1')
 
     // Wait until a full beat of the clock (16 pulses) plus the start of the next has gone out.
-    const clockOns = (log: MidiLogEntry[]) => log.filter((e) => e.data[0] === 0x90 && e.data[1] === 99)
+    const clockOns = (log: MidiLogEntry[]) => log.filter((e) => e.data[0] === 0x90 && e.data[1] === 98)
     await expect.poll(async () => clockOns(await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(17)
     const log = await midiLog(page)
     expect(log.every((e) => e.port === 'conway')).toBe(true)
-    // The play gate (note 100) goes high before the first step. The clock is checked separately below.
-    const gates = log.filter((e) => e.data[1] !== 99)
+    // The play gate (note 99) goes high before the first step. The clock is checked separately below.
+    const gates = log.filter((e) => e.data[1] !== 98)
     const first = gates.slice(0, 5).map((e) => e.data)
     expect(first).toEqual([
-      [0x90, 100, 100],
+      [0x90, 99, 100],
       [0x90, 36, 100],
       [0x80, 36, 0],
       [0x90, 38, 100],
@@ -161,10 +161,10 @@ test.describe('playback', () => {
     expect(gates[1]!.timestamp).toBeDefined()
     expect(gates[3]!.timestamp! - gates[1]!.timestamp!).toBeCloseTo(500, -1)
 
-    // The x16 clock (note 99) pulses 16 times per 500 ms beat, each pulse followed by its note-off.
-    const clock = log.filter((e) => e.data[1] === 99)
-    expect(clock[0]!.data).toEqual([0x90, 99, 100])
-    expect(clock[1]!.data).toEqual([0x80, 99, 0])
+    // The x16 clock (note 98) pulses 16 times per 500 ms beat, each pulse followed by its note-off.
+    const clock = log.filter((e) => e.data[1] === 98)
+    expect(clock[0]!.data).toEqual([0x90, 98, 100])
+    expect(clock[1]!.data).toEqual([0x80, 98, 0])
     const ons = clockOns(log)
     const t0 = ons[0]!.timestamp!
     expect(t0).toBeCloseTo(gates[1]!.timestamp!, 1)
@@ -176,7 +176,7 @@ test.describe('playback', () => {
     await expect(page.getByTestId('play')).toContainText('Play')
     await expect(page.getByTestId('position')).toHaveText('0:00')
     // Stopping releases the play gate.
-    expect((await midiLog(page)).at(-1)!.data).toEqual([0x80, 100, 0])
+    expect((await midiLog(page)).at(-1)!.data).toEqual([0x80, 99, 0])
   })
 
   test('solo plays only the soloed channels and marks the rest as muted', async ({ midiPage: page }) => {
@@ -213,17 +213,17 @@ test.describe('playback', () => {
     await page.locator('body').click({ position: { x: 5, y: 5 } })
     await page.keyboard.press('Space')
     await expect(page.getByTestId('play')).toContainText('Stop')
-    expect((await midiLog(page))[0]!.data).toEqual([0x90, 100, 100])
+    expect((await midiLog(page))[0]!.data).toEqual([0x90, 99, 100])
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('play')).toContainText('Play')
     const log = await midiLog(page)
     // Stop releases the play gate, then panic floods all 62 outputs, the clock and the play gate.
     const flood = log.slice(-65).map((e) => e.data)
-    expect(log.at(-66)!.data).toEqual([0x80, 100, 0])
+    expect(log.at(-66)!.data).toEqual([0x80, 99, 0])
     expect(flood[0]).toEqual([0x80, 36, 0])
     expect(flood[61]).toEqual([0x80, 97, 0])
-    expect(flood[62]).toEqual([0x80, 99, 0])
-    expect(flood[63]).toEqual([0x80, 100, 0])
+    expect(flood[62]).toEqual([0x80, 98, 0])
+    expect(flood[63]).toEqual([0x80, 99, 0])
     expect(flood[64]).toEqual([0xb0, 123, 0])
   })
 
@@ -237,10 +237,10 @@ test.describe('playback', () => {
     await page.getByTestId('play').click()
     await expect.poll(async () => (await midiLog(page)).length).toBeGreaterThanOrEqual(3)
     const log = await midiLog(page)
-    expect(log[0]!.data).toEqual([0x94, 100, 100])
+    expect(log[0]!.data).toEqual([0x94, 99, 100])
     expect(log[1]!.data).toEqual([0x94, 63, 100])
     // The clock ignores the base note and uses the configured channel.
-    expect(log[2]!.data).toEqual([0x94, 99, 100])
+    expect(log[2]!.data).toEqual([0x94, 98, 100])
     await page.getByTestId('play').click()
   })
 })
