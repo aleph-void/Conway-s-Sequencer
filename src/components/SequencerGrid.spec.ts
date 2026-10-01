@@ -22,6 +22,23 @@ describe('SequencerGrid', () => {
     expect(wrapper.get('[data-testid="channel-count"]').text()).toContain('8 / 63')
   })
 
+  it('dims rows that are muted, or silenced by another channel\'s solo', async () => {
+    const store = useSongStore()
+    const wrapper = mount(SequencerGrid)
+    const row = (i: number) => wrapper.get(`[data-testid="channel-row-${i}"]`)
+    expect(row(0).classes()).not.toContain('is-muted')
+
+    store.updateChannel(store.song.channels[2]!.id, { solo: true })
+    await wrapper.vm.$nextTick()
+    expect(row(0).classes()).toContain('is-muted')
+    expect(row(1).classes()).toContain('is-muted')
+    expect(row(2).classes()).not.toContain('is-muted')
+
+    store.updateChannel(store.song.channels[2]!.id, { solo: false })
+    await wrapper.vm.$nextTick()
+    expect(row(0).classes()).not.toContain('is-muted')
+  })
+
   it('toggles a cell on pointerdown and paints on pointerenter', async () => {
     const store = useSongStore()
     const wrapper = mount(SequencerGrid, { attachTo: document.body })

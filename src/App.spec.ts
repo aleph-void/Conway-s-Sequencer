@@ -15,6 +15,7 @@ describe('App', () => {
     expect(wrapper.find('[data-testid="play"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="sections-table"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="grid"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="song-browser-tab"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Nervous Squirrel')
   })
 

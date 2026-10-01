@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MAX_CHANNELS,
+  anySoloed,
   clampStepsToLength,
   createChannel,
   createSection,
   createSong,
   generateId,
   groupRuns,
+  isChannelSilenced,
   isStepOn,
+  MAX_CHANNELS,
   nextFreeOutput,
   stepCount,
   stepsPerBar,
@@ -36,6 +38,28 @@ describe('song factories', () => {
     expect(createChannel(0).name).toBe('Out 1')
     expect(createChannel(62).name).toBe('Out 63')
     expect(createChannel(3, { name: 'Kick', muted: true }).muted).toBe(true)
+    expect(createChannel(3).solo).toBe(false)
+  })
+
+  it('isChannelSilenced: mute always silences, solo silences every other channel', () => {
+    const a = createChannel(0)
+    const b = createChannel(1)
+    const c = createChannel(2)
+    const all = [a, b, c]
+    expect(anySoloed(all)).toBe(false)
+    expect(all.map((ch) => isChannelSilenced(ch, all))).toEqual([false, false, false])
+
+    a.solo = true
+    expect(anySoloed(all)).toBe(true)
+    expect(all.map((ch) => isChannelSilenced(ch, all))).toEqual([false, true, true])
+
+    // A second solo joins the first instead of replacing it.
+    b.solo = true
+    expect(all.map((ch) => isChannelSilenced(ch, all))).toEqual([false, false, true])
+
+    // An explicit mute wins even on a soloed channel.
+    a.muted = true
+    expect(isChannelSilenced(a, all)).toBe(true)
   })
 
   it('createSection applies overrides', () => {

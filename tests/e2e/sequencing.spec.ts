@@ -1,4 +1,4 @@
-import { enableMidi, expect, midiLog, test } from './fixtures'
+import { enableMidi, expect, midiLog, storedSong, test } from './fixtures'
 
 test.describe('sections', () => {
   test('adds sections that inherit tempo and reshape the grid', async ({ midiPage: page }) => {
@@ -30,6 +30,52 @@ test.describe('sections', () => {
 })
 
 test.describe('drawing gates', () => {
+  test('reorders sections by dragging their handles and duplicates them', async ({ midiPage: page }) => {
+    const rows = page.getByTestId('sections-table').locator('tbody tr')
+    await page.getByTestId('add-section').click()
+    await page.getByTestId('add-section').click()
+    await rows.nth(1).getByTestId('section-name').fill('B')
+    await rows.nth(1).getByTestId('section-name').press('Tab')
+    await rows.nth(2).getByTestId('section-name').fill('C')
+    await rows.nth(2).getByTestId('section-name').press('Tab')
+    const names = () => rows.locator('[data-testid="section-name"]').evaluateAll((els) => els.map((el) => (el as HTMLInputElement).value))
+    expect(await names()).toEqual(['A', 'B', 'C'])
+
+    // Give A a gate so the grid proves the section itself moved, not just its name.
+    await page.getByTestId('cell-0-0-0').click()
+
+    // Drag A's handle to the lower half of C's row: A lands last.
+    const handle = rows.nth(0).getByTestId('section-handle')
+    const target = (await rows.nth(2).boundingBox())!
+    const grip = (await handle.boundingBox())!
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2 + 10, { steps: 3 })
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height * 0.8, { steps: 10 })
+    // One more nudge so the browser delivers a dragover at the final position.
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height * 0.8 + 1)
+    await expect(rows.nth(2)).toHaveClass(/drop-after/)
+    await page.mouse.up()
+    expect(await names()).toEqual(['B', 'C', 'A'])
+    await expect(page.getByTestId('grid-section-2')).toContainText('A')
+    await expect(page.getByTestId('cell-0-2-0')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('cell-0-0-0')).toHaveAttribute('aria-checked', 'false')
+    // Nothing is left in a drag state.
+    await expect(rows.nth(2)).not.toHaveClass(/dragging|drop-/)
+
+    // Duplicate C: the copy lands right after it with the same settings and notes.
+    await page.getByTestId('cell-0-1-5').click()
+    await rows.nth(1).getByTestId('section-duplicate').click()
+    expect(await names()).toEqual(['B', 'C', 'C copy', 'A'])
+    await expect(page.getByTestId('cell-0-1-5')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('cell-0-2-5')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('cell-0-3-0')).toHaveAttribute('aria-checked', 'true')
+
+    // The new order survives a reload.
+    await page.reload()
+    expect(await names()).toEqual(['B', 'C', 'C copy', 'A'])
+  })
+
   test('click toggles, drag paints, and the song survives a reload', async ({ midiPage: page }) => {
     const cell = (c: number, s: number) => page.getByTestId(`cell-${c}-0-${s}`)
     await cell(0, 0).click()
@@ -52,9 +98,7 @@ test.describe('drawing gates', () => {
     await page.getByTestId('channel-name').first().press('Tab')
     await expect(page.getByTestId('autosave-status')).toContainText('Autosaved at')
     await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
-    await expect
-      .poll(() => page.evaluate(() => localStorage.getItem('conways-sequencer:song') ?? ''))
-      .toContain('"Kick"')
+    await expect.poll(async () => (await storedSong(page)).channels?.[0]?.name).toBe('Kick')
 
     await page.reload()
     for (const s of [4, 5, 6, 7]) await expect(cell(1, s)).toHaveAttribute('aria-checked', 'true')
@@ -63,7 +107,7 @@ test.describe('drawing gates', () => {
   })
 
   test('autosaves every kind of edit, including settings and sections', async ({ midiPage: page }) => {
-    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('conways-sequencer:song') ?? '{}'))
+    const stored = () => storedSong(page)
     await page.getByTestId('song-name').fill('Everything')
     await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
     await expect.poll(async () => (await stored()).name).toBe('Everything')
@@ -77,7 +121,7 @@ test.describe('drawing gates', () => {
 
     await page.getByTestId('cell-5-1-2').click()
     await expect.poll(async () => (await stored()).sections?.[1]?.steps).toEqual({
-      [(await stored()).channels[5].id]: [2],
+      [(await stored()).channels![5]!.id]: [2],
     })
   })
 
@@ -119,6 +163,35 @@ test.describe('playback', () => {
     await expect(page.getByTestId('position')).toHaveText('0:00')
     // Stopping releases the play gate.
     expect((await midiLog(page)).at(-1)!.data).toEqual([0x80, 100, 0])
+  })
+
+  test('solo plays only the soloed channels and marks the rest as muted', async ({ midiPage: page }) => {
+    await enableMidi(page)
+    await page.getByTestId('cell-0-0-0').click()
+    await page.getByTestId('cell-1-0-0').click()
+    await page.getByTestId('cell-2-0-0').click()
+
+    const solo = (i: number) => page.getByTestId(`channel-header-${i}`).getByTestId('channel-solo')
+    const mute = (i: number) => page.getByTestId(`channel-header-${i}`).getByTestId('channel-mute')
+
+    await solo(1).click()
+    await expect(solo(1)).toHaveAttribute('aria-pressed', 'true')
+    await expect(mute(0)).toHaveAttribute('title', 'Muted by solo')
+    await expect(mute(2)).toHaveAttribute('title', 'Muted by solo')
+    await expect(mute(1)).toHaveAttribute('title', 'Mute')
+
+    // A second solo joins the first: its implied mute is lifted.
+    await solo(2).click()
+    await expect(mute(2)).toHaveAttribute('title', 'Mute')
+    await expect(mute(0)).toHaveAttribute('title', 'Muted by solo')
+
+    await page.getByTestId('play').click()
+    await expect.poll(async () => (await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(2)
+    await page.getByTestId('play').click()
+    const notesOn = (await midiLog(page)).filter((e) => e.data[0] === 0x90).map((e) => e.data[1])
+    expect(notesOn).toContain(37)
+    expect(notesOn).toContain(38)
+    expect(notesOn).not.toContain(36)
   })
 
   test('space toggles playback and panic sends note-offs for all outputs', async ({ midiPage: page }) => {

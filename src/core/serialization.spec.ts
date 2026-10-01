@@ -31,7 +31,7 @@ describe('normalizeSong', () => {
   it('fills defaults for missing fields', () => {
     const song = normalizeSong({ channels: [{}], sections: [{}] })
     expect(song.name).toBe('Untitled')
-    expect(song.channels[0]).toMatchObject({ output: 0, name: 'Out 1', muted: false })
+    expect(song.channels[0]).toMatchObject({ output: 0, name: 'Out 1', muted: false, solo: false })
     expect(song.sections[0]).toMatchObject({
       tempo: null,
       timeSignature: { beats: 4, unit: 4 },
@@ -87,6 +87,14 @@ describe('normalizeSong', () => {
     expect(song.channels[0]).toMatchObject({ muted: true })
     expect(song.channels[0]).not.toHaveProperty('gateMode')
     expect(song.settings).not.toHaveProperty('gateLength')
+  })
+
+  it('keeps the solo flag and defaults it to false for older files', () => {
+    const song = normalizeSong({
+      channels: [{ output: 0, solo: true }, { output: 1 }, { output: 2, solo: 'yes' }],
+      sections: [],
+    })
+    expect(song.channels.map((c) => c.solo)).toEqual([true, false, false])
   })
 })
 

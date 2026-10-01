@@ -20,7 +20,8 @@ backend, and songs autosave to local storage.
   released when it stops, so the module's last output can act as a run/stop gate.
 - **Sections** with their own tempo, time signature, bar count and step
   resolution. Leave a section's tempo blank and it inherits the previous
-  section's tempo.
+  section's tempo. Reorder sections by dragging the ⋮⋮ grip (or focus it and
+  press ↑/↓), and duplicate one, notes included, with ⧉.
 - **Draw gates** by clicking or click-dragging across the grid; Enter/Space
   toggles the focused cell for keyboard users.
 - **Gates follow the grid.** A gate goes high for the whole of every step it is
@@ -32,6 +33,11 @@ backend, and songs autosave to local storage.
 - **Autosave.** Every edit made in the GUI is written to the browser's local
   storage a moment later and restored on the next visit; the Song panel shows
   when the last save happened and warns if storage is full or disabled.
+- **Song browser.** The "Songs" tab on the left edge slides out a drawer listing
+  every song saved in this browser, most recently edited first. Pick one to
+  load it and work on it (the choice is remembered across reloads), start a new
+  song, or delete one. "New" and "Import JSON" add a song to the browser rather
+  than replacing the one you have open.
 - **Loop, panic (Esc), Space to play/stop**, and JSON export/import.
 - **Editor-first layout.** The grid fills the viewport below a one-line
   toolbar (MIDI output + transport); sections, module settings and song files
@@ -107,7 +113,7 @@ import and out-of-range values are clamped; see `src/core/serialization.ts`.
   "version": 1,
   "name": "Untitled",
   "settings": { "midiChannel": 1, "baseNote": 36, "velocity": 100, "loop": true },
-  "channels": [{ "id": "ch_1", "name": "Kick", "output": 0, "muted": false }],
+  "channels": [{ "id": "ch_1", "name": "Kick", "output": 0, "muted": false, "solo": false }],
   "sections": [
     {
       "id": "sec_1",

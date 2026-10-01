@@ -8,7 +8,7 @@ iteration was built against, with what shipped and what is left.
 
 | Requirement | Decision |
 | --- | --- |
-| Client-side only | Vite + Vue 3 + Pinia, static build, no backend. Songs autosave to `localStorage`, export/import as JSON. |
+| Client-side only | Vite + Vue 3 + Pinia, static build, no backend. Songs autosave to a `localStorage` library browsed from a slide-out drawer, export/import as JSON. |
 | Select the MIDI output in the GUI | `navigator.requestMIDIAccess({ sysex: false })`; outputs listed in a `<select>`, choice persisted, `statechange` tracked for hot-plug. |
 | Up to 63 channels | Hard cap `MAX_CHANNELS = 63`. A channel = one module output (shown 1-based). MIDI note = `baseNote + output`. The 64th output is reserved for the play gate. |
 | Play gate | `PLAY_GATE_NOTE = 100` goes note-on when playback starts and note-off when it stops (manual stop, end of a non-looping song, or panic). Independent of the base note. |
@@ -39,13 +39,15 @@ src/
     compile.ts     Song → sorted MidiEvent[] (the "render" step)
     scheduler.ts   look-ahead scheduler: hands events to the port with timestamps
     serialization.ts  JSON export/import with validation + clamping
+    library.ts     the song library in localStorage: index + one key per song
   stores/          Pinia
-    song.ts        the document + all edits + autosave
+    song.ts        the document + all edits + autosave + library (open/new/delete)
     midi.ts        Web MIDI access, outputs, selection, send(), panic()
     transport.ts   play/stop/position, wires compile + scheduler + midi
   components/      Vue SFCs, thin over the stores
     AppHeader, MidiPanel, TransportBar, SettingsPanel,
-    SectionsPanel, SequencerGrid (+ ChannelHeader), SongIO
+    SectionsPanel, SequencerGrid (+ ChannelHeader), SongIO,
+    SongBrowser (slide-out drawer listing the saved songs)
 tests/e2e/         Playwright specs + fake Web MIDI fixture
 ```
 
@@ -58,6 +60,12 @@ Design choices worth knowing:
 - **Timestamps, not timers.** `MIDIOutput.send(data, timestamp)` with a 120 ms
   look-ahead and a 25 ms wake-up, the standard Web Audio "tale of two clocks"
   approach. Timer jitter affects only how early a message is queued.
+- **One key per song.** The library index (`conways-sequencer:library`) holds
+  the open song's id and a small entry per song (name, counts, timestamps) for
+  the browser to list; each song's JSON lives under `conways-sequencer:song:<id>`,
+  so autosaving one song never rewrites the others. The pre-library single-slot
+  autosave is migrated into the first entry on load. A save compares against
+  what is stored, so merely opening a song does not bump its "edited" time.
 - **Step storage** is `Record<channelId, number[]>` of sorted on-step indices
   per section: compact in JSON, cheap to toggle, no fixed-size arrays to resize
   when a section's length changes (out-of-range steps are trimmed).
@@ -86,7 +94,7 @@ Design choices worth knowing:
 | Layer | Tool | What it proves |
 | --- | --- | --- |
 | `core/*` | Vitest (node-ish, jsdom env) | Tempo inheritance, step/time math, note mapping, compile output (times, ordering, held/merged gates, mute, settings), scheduler behaviour with fake timers (look-ahead, loop wrap, stop → note-offs, live reload), JSON validation/clamping. |
-| `stores/*` | Vitest + Pinia | Every edit action and its invariants (63-channel cap, step trimming, id uniqueness), autosave/debounce/flush, MIDI access states and hot-plug, transport ↔ scheduler ↔ MIDI integration. |
+| `stores/*` | Vitest + Pinia | Every edit action and its invariants (63-channel cap, step trimming, id uniqueness), autosave/debounce/flush, the song library (open, new, delete, migration, storage failures), MIDI access states and hot-plug, transport ↔ scheduler ↔ MIDI integration. |
 | `components/*` | Vitest + @vue/test-utils | Rendering, user interactions (click/drag/keyboard painting, inputs, buttons), empty and error states, keyboard shortcuts. |
 | App | Playwright, headless Chromium | Real DOM, real pointer drags, real `localStorage`, real downloads; MIDI messages asserted byte-for-byte via the fake port log, including timestamps 500 ms apart for steps 4 apart at 120 BPM. |
 

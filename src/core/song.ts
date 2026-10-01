@@ -50,6 +50,8 @@ export interface Channel {
   /** 0-based module output (0..62). MIDI note = settings.baseNote + output. */
   output: number
   muted: boolean
+  /** Solo: while any channel is soloed, every channel that is not soloed is silenced. */
+  solo: boolean
 }
 
 export interface SongSettings {
@@ -88,6 +90,7 @@ export function createChannel(output: number, overrides: Partial<Channel> = {}):
     name: `Out ${output + 1}`,
     output,
     muted: false,
+    solo: false,
     ...overrides,
   }
 }
@@ -168,6 +171,22 @@ export function groupRuns(steps: readonly number[]): Array<[number, number]> {
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+/** True when at least one channel is soloed, which implicitly mutes every other channel. */
+export function anySoloed(channels: readonly Pick<Channel, 'solo'>[]): boolean {
+  return channels.some((c) => c.solo)
+}
+
+/**
+ * Whether a channel produces no gates right now: either it is muted outright, or another
+ * channel is soloed and this one is not. An explicit mute always wins, even on a soloed channel.
+ */
+export function isChannelSilenced(
+  channel: Pick<Channel, 'muted' | 'solo'>,
+  channels: readonly Pick<Channel, 'solo'>[],
+): boolean {
+  return channel.muted || (!channel.solo && anySoloed(channels))
 }
 
 /** Outputs already claimed by channels, so a new channel can pick the lowest free one. */

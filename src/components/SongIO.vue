@@ -43,7 +43,7 @@ const autosave = computed(() => {
         tone: 'status-bad',
       }
     default:
-      return { text: 'Songs autosave in this browser. Export to keep a copy.', tone: 'muted' }
+      return { text: 'Songs autosave in this browser; open them from the Song browser tab.', tone: 'muted' }
   }
 })
 
@@ -78,10 +78,10 @@ async function onFile(event: Event) {
 }
 
 function newSong() {
-  if (typeof window !== 'undefined' && !window.confirm('Start a new song? Unsaved changes are lost.')) return
+  const previous = store.song.name.trim() || 'Untitled'
   transport.stop()
   store.newSong()
-  message.value = 'New song'
+  message.value = `New song. "${previous}" is kept in the Song browser.`
   error.value = null
 }
 </script>

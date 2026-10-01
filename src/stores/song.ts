@@ -1,5 +1,16 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import {
+  LEGACY_SONG_KEY,
+  loadLibrary,
+  readSong,
+  removeFromLibrary,
+  saveToLibrary,
+  sortEntries,
+  writeIndex,
+  type LibraryEntry,
+  type LibraryIndex,
+} from '../core/library'
 import { normalizeSong, parseSong, serializeSong } from '../core/serialization'
 import {
   MAX_BARS,
@@ -12,6 +23,7 @@ import {
   createChannel,
   createSection,
   createSong,
+  generateId,
   nextFreeOutput,
   stepCount,
   withStepSet,
@@ -23,7 +35,6 @@ import {
 } from '../core/song'
 import { buildTimeline, resolveTempos, totalDuration, totalSteps } from '../core/timing'
 
-export const STORAGE_KEY = 'conways-sequencer:song'
 /** Delay between the last edit and the autosave write. */
 export const AUTOSAVE_DEBOUNCE_MS = 250
 
@@ -37,25 +48,22 @@ export const AUTOSAVE_DEBOUNCE_MS = 250
  */
 export type SaveState = 'unavailable' | 'idle' | 'pending' | 'saved' | 'error'
 
-/** Load the autosaved song, or a fresh one if nothing valid is stored. */
-export function loadInitialSong(storage: Pick<Storage, 'getItem'> | null): Song {
-  try {
-    const raw = storage?.getItem(STORAGE_KEY)
-    if (raw) return parseSong(raw)
-  } catch {
-    // Corrupt autosave; fall through to a fresh song.
-  }
-  return createSong()
-}
-
 export const useSongStore = defineStore('song', () => {
   const storage: Storage | null = typeof localStorage === 'undefined' ? null : localStorage
-  const song = ref<Song>(loadInitialSong(storage))
+  const loaded = loadLibrary(storage)
+  const song = ref<Song>(loaded.song)
+  /** Id of the open song in the library. */
+  const currentId = ref(loaded.id)
+  /** The library index; `library` is the view the Song browser lists. */
+  const index = ref<LibraryIndex>(loaded.index)
   /** Bumped on every structural edit so the transport can recompile. */
   const revision = ref(0)
   const saveState = ref<SaveState>(storage ? 'idle' : 'unavailable')
   /** Epoch milliseconds of the last successful autosave in this session. */
   const lastSavedAt = ref<number | null>(null)
+
+  /** Every song saved in this browser, most recently edited first. */
+  const library = computed<LibraryEntry[]>(() => sortEntries(index.value.entries))
 
   const timeline = computed(() => buildTimeline(song.value))
   const resolvedTempos = computed(() => resolveTempos(song.value.sections))
@@ -155,6 +163,18 @@ export const useSongStore = defineStore('song', () => {
     touch()
   }
 
+  /** Move a section so that it ends up at `to` (clamped to the list); used by drag-and-drop reordering. */
+  function moveSectionTo(id: string, to: number) {
+    const list = song.value.sections
+    const from = list.findIndex((s) => s.id === id)
+    if (from < 0 || !Number.isFinite(to)) return
+    const target = clamp(Math.round(to), 0, list.length - 1)
+    if (target === from) return
+    const [item] = list.splice(from, 1)
+    list.splice(target, 0, item!)
+    touch()
+  }
+
   function updateSection(id: string, patch: Partial<Omit<Section, 'id' | 'steps'>>) {
     const section = sectionById(id)
     if (!section) return
@@ -215,14 +235,14 @@ export const useSongStore = defineStore('song', () => {
     touch()
   }
 
+  /** Open `next` as a new song in the library, keeping the current one saved. */
   function loadSong(next: Song) {
-    song.value = normalizeSong(next)
-    touch()
+    openNew(normalizeSong(next))
   }
 
+  /** Start a fresh song as a new library entry, keeping the current one saved. */
   function newSong() {
-    song.value = createSong()
-    touch()
+    openNew(createSong())
   }
 
   function exportJson(): string {
@@ -233,23 +253,138 @@ export const useSongStore = defineStore('song', () => {
     loadSong(parseSong(json))
   }
 
-  // ---- persistence ------------------------------------------------------
-  let handle: ReturnType<typeof setTimeout> | null = null
-  /** Write the song to storage now, cancelling any pending debounced save. */
-  function save() {
+  // ---- library ----------------------------------------------------------
+  function replaceSong(next: Song, id: string) {
+    song.value = next
+    currentId.value = id
+    touch()
+  }
+
+  /** Make `next` the open song under a fresh id and write it straight away. */
+  function openNew(next: Song) {
+    flush()
+    replaceSong(next, generateId('song'))
+    writeNow()
+  }
+
+  /** Make an already-saved song the open one and record that in the index. */
+  function openStored(id: string, next: Song) {
+    replaceSong(next, id)
+    index.value.currentId = id
+    writeIndexSafely()
+  }
+
+  /**
+   * Open a saved song from the library. Returns false when the song is gone
+   * or unreadable, in which case its entry is dropped from the library.
+   */
+  function selectSong(id: string): boolean {
+    if (id === currentId.value) return true
+    if (!storage) return false
+    const next = readSong(storage, id)
+    if (!next) {
+      forget(id)
+      return false
+    }
+    flush()
+    openStored(id, next)
+    return true
+  }
+
+  /**
+   * Delete a saved song from this browser. Deleting the open song opens the
+   * most recently edited remaining one, or a fresh song when none is left;
+   * its own pending edits are discarded rather than flushed.
+   */
+  function deleteSong(id: string) {
     if (!storage) return
-    if (handle) clearTimeout(handle)
-    handle = null
+    const wasCurrent = id === currentId.value
+    if (wasCurrent) cancelPending()
+    forget(id)
+    if (!wasCurrent) return
+    for (const entry of library.value) {
+      const next = readSong(storage, entry.id)
+      if (next) {
+        openStored(entry.id, next)
+        return
+      }
+    }
+    replaceSong(createSong(), generateId('song'))
+    writeNow()
+  }
+
+  function forget(id: string) {
+    if (!storage) return
     try {
-      storage.setItem(STORAGE_KEY, serializeSong(song.value))
-      saveState.value = 'saved'
-      lastSavedAt.value = Date.now()
+      removeFromLibrary(storage, index.value, id)
     } catch {
-      // Quota exceeded or storage disabled: autosave is best-effort, but say so.
       saveState.value = 'error'
     }
   }
+
+  function writeIndexSafely() {
+    if (!storage) return
+    try {
+      writeIndex(storage, index.value)
+    } catch {
+      saveState.value = 'error'
+    }
+  }
+
+  // ---- persistence ------------------------------------------------------
+  let handle: ReturnType<typeof setTimeout> | null = null
+
+  function cancelPending() {
+    if (handle) clearTimeout(handle)
+    handle = null
+  }
+
+  /**
+   * Write the open song now, so switching songs never drops an edit, even one
+   * made in the same tick (before the autosave watcher has seen it).
+   */
+  function flush() {
+    if (storage) save()
+  }
+
+  /**
+   * Write the open song and its library entry. Returns whether the content
+   * changed (null when storage is unavailable or the write failed).
+   */
+  function writeNow(): boolean | null {
+    if (!storage) return null
+    try {
+      return saveToLibrary(storage, index.value, currentId.value, song.value)
+    } catch {
+      // Quota exceeded or storage disabled: autosave is best-effort, but say so.
+      saveState.value = 'error'
+      return null
+    }
+  }
+
+  /** Write the song to storage now, cancelling any pending debounced save. */
+  function save() {
+    if (!storage) return
+    cancelPending()
+    const changed = writeNow()
+    if (changed === null) return
+    if (changed) {
+      saveState.value = 'saved'
+      lastSavedAt.value = Date.now()
+    } else {
+      // Opening a song fires the watcher without changing anything on disk.
+      saveState.value = 'idle'
+    }
+  }
+
   if (storage) {
+    if (loaded.fresh) {
+      // First visit, or a song migrated from the pre-library autosave: make it
+      // the first library entry so the Song browser lists it.
+      if (writeNow() !== null && loaded.migrated) storage.removeItem(LEGACY_SONG_KEY)
+    } else if (loaded.indexChanged) {
+      writeIndexSafely()
+    }
     // Every GUI edit goes through an action that mutates `song`, so a deep
     // watch is enough to pick all of them up; debounce so a paint-drag across
     // many cells results in one write.
@@ -272,6 +407,8 @@ export const useSongStore = defineStore('song', () => {
 
   return {
     song,
+    currentId,
+    library,
     revision,
     saveState,
     lastSavedAt,
@@ -290,6 +427,7 @@ export const useSongStore = defineStore('song', () => {
     duplicateSection,
     removeSection,
     moveSection,
+    moveSectionTo,
     updateSection,
     toggleStep,
     setStep,
@@ -299,6 +437,8 @@ export const useSongStore = defineStore('song', () => {
     rename,
     loadSong,
     newSong,
+    selectSong,
+    deleteSong,
     exportJson,
     importJson,
     save,

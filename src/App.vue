@@ -6,6 +6,7 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import SectionsPanel from './components/SectionsPanel.vue'
 import SequencerGrid from './components/SequencerGrid.vue'
 import SongIO from './components/SongIO.vue'
+import SongBrowser from './components/SongBrowser.vue'
 import BrandLogo from './components/BrandLogo.vue'
 import { useUiStore } from './stores/ui'
 import { useFullscreen } from './composables/useFullscreen'
@@ -18,6 +19,7 @@ const year = new Date().getFullYear()
 <template>
   <div class="app">
     <AppHeader />
+    <SongBrowser />
     <main class="layout">
       <div class="toolbar panel">
         <MidiPanel />
@@ -91,7 +93,8 @@ const year = new Date().getFullYear()
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px 16px;
+  /* Extra room on the left for the Song browser's tab. */
+  padding: 12px 16px 12px 40px;
   max-width: 1600px;
   width: 100%;
   margin: 0 auto;
