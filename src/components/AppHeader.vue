@@ -61,8 +61,6 @@ const name = computed({
   display: flex;
   align-items: center;
   gap: 28px;
-  max-width: 1600px;
-  margin: 0 auto;
 }
 
 .brand {
