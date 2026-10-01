@@ -105,7 +105,7 @@ import and out-of-range values are clamped; see `src/core/serialization.ts`.
   "version": 1,
   "name": "Untitled",
   "settings": { "midiChannel": 1, "baseNote": 36, "velocity": 100, "loop": true },
-  "channels": [{ "id": "ch_1", "name": "Kick", "output": 0, "muted": false }],
+  "channels": [{ "id": "ch_1", "name": "Kick", "output": 0, "muted": false, "solo": false }],
   "sections": [
     {
       "id": "sec_1",
