@@ -23,7 +23,7 @@ backend, and songs autosave to local storage.
   toggles the focused cell for keyboard users.
 - **Gates follow the grid.** A gate goes high for the whole of every step it is
   drawn on, and consecutive on-steps hold it high as one long gate until the
-  next empty step.
+  next empty step. The grid draws such a run as one continuous bar.
 - **Sample-accurate-ish timing**: a look-ahead scheduler hands messages to the
   MIDI port with explicit timestamps, so JavaScript timer jitter never reaches
   the module. Edits while playing are picked up live.
