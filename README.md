@@ -1,0 +1,86 @@
+# Conway's Sequencer
+
+A client-side binary gate sequencer for the
+[Nervous Squirrel Conway's Game](https://www.nervoussquirrel.com/conways_game.html)
+eurorack module, by [alephvoid.com](https://alephvoid.com).
+
+Draw on/off steps on a piano-roll style grid, one row per module output, and the
+app sends MIDI notes over [Web MIDI](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API)
+so each row becomes a gate on the module. Nothing leaves your browser: there is no
+backend, and songs autosave to local storage.
+
+## Features
+
+- **MIDI output picker.** Lists the outputs the browser can see, remembers your
+  choice, and follows hot-plugging.
+- **Up to 64 channels**, matching the module's 64 outputs. Each channel maps to an
+  output number (1–64), which becomes MIDI note `baseNote + output - 1`
+  (output 1 = C2 / note 36 by default, as the module expects).
+- **Sections** with their own tempo, time signature, bar count and step
+  resolution. Leave a section's tempo blank and it inherits the previous
+  section's tempo.
+- **Draw gates** by clicking or click-dragging across the grid; Enter/Space
+  toggles the focused cell for keyboard users.
+- **Retrigger or tie** per channel: every step is its own gate, or consecutive
+  steps merge into one long gate.
+- **Sample-accurate-ish timing**: a look-ahead scheduler hands messages to the
+  MIDI port with explicit timestamps, so JavaScript timer jitter never reaches
+  the module. Edits while playing are picked up live.
+- **Loop, panic (Esc), Space to play/stop**, and JSON export/import.
+
+## Browser support
+
+Web MIDI is available in Chromium-based browsers (Chrome, Edge, Opera, Brave).
+Firefox needs a site permission add-on; Safari does not support it.
+
+## Development
+
+```sh
+npm install
+npm run dev          # local dev server
+npm run check        # typecheck + lint + unit tests
+npm run test:e2e     # Playwright end-to-end tests (needs `npx playwright install chromium` once)
+npm run build        # production build to dist/
+```
+
+Unit and component tests live next to the code as `*.spec.ts` and run with
+Vitest in jsdom. End-to-end tests live in `tests/e2e` and run against the built
+app in headless Chromium with a fake Web MIDI implementation that records every
+message sent.
+
+## Deployment
+
+`.github/workflows/ci.yml` runs lint, typecheck, unit tests with coverage
+thresholds, the production build and the e2e suite on every push and pull
+request. On a push to `main` it then builds with `BASE_PATH=/<repo>/` and
+deploys `dist/` to GitHub Pages. Enable Pages for the repository with
+**Source: GitHub Actions** once, and every merge to `main` ships.
+
+## Song file format
+
+Songs are plain JSON (`*.conway-seq.json`). Unknown fields are ignored on
+import and out-of-range values are clamped; see `src/core/serialization.ts`.
+
+```jsonc
+{
+  "version": 1,
+  "name": "Untitled",
+  "settings": { "midiChannel": 1, "baseNote": 36, "velocity": 100, "gateLength": 0.5, "loop": true },
+  "channels": [{ "id": "ch_1", "name": "Kick", "output": 0, "muted": false, "gateMode": "retrigger" }],
+  "sections": [
+    {
+      "id": "sec_1",
+      "name": "A",
+      "tempo": 120,                    // null = inherit from the previous section
+      "timeSignature": { "beats": 4, "unit": 4 },
+      "bars": 4,
+      "subdivision": 4,                // steps per beat
+      "steps": { "ch_1": [0, 4, 8, 12] } // "on" step indices per channel
+    }
+  ]
+}
+```
+
+## License
+
+MIT

@@ -1,0 +1,59 @@
+import { MAX_CHANNELS, clamp } from './song'
+
+export const NOTE_OFF = 0x80
+export const NOTE_ON = 0x90
+export const CONTROL_CHANGE = 0xb0
+export const CC_ALL_NOTES_OFF = 123
+export const CC_ALL_SOUND_OFF = 120
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const
+
+/** Status byte for a channel message. `channel` is 1-based (1..16). */
+export function statusByte(kind: number, channel: number): number {
+  const ch = clamp(Math.round(channel), 1, 16) - 1
+  return (kind & 0xf0) | ch
+}
+
+export function noteOn(channel: number, note: number, velocity: number): number[] {
+  return [statusByte(NOTE_ON, channel), clamp(Math.round(note), 0, 127), clamp(Math.round(velocity), 1, 127)]
+}
+
+export function noteOff(channel: number, note: number): number[] {
+  return [statusByte(NOTE_OFF, channel), clamp(Math.round(note), 0, 127), 0]
+}
+
+export function allNotesOff(channel: number): number[] {
+  return [statusByte(CONTROL_CHANGE, channel), CC_ALL_NOTES_OFF, 0]
+}
+
+/** Module output (0..63) -> MIDI note number. Throws if the result leaves 0..127. */
+export function outputToNote(output: number, baseNote: number): number {
+  if (!Number.isInteger(output) || output < 0 || output >= MAX_CHANNELS) {
+    throw new RangeError(`output must be an integer in 0..${MAX_CHANNELS - 1}, got ${output}`)
+  }
+  const note = baseNote + output
+  if (note < 0 || note > 127) throw new RangeError(`note ${note} is outside 0..127`)
+  return note
+}
+
+/** Human-readable note name using the C4 = 60 convention (so 36 = C2, as the module's docs state). */
+export function noteName(note: number): string {
+  const n = clamp(Math.round(note), 0, 127)
+  const octave = Math.floor(n / 12) - 1
+  return `${NOTE_NAMES[n % 12]}${octave}`
+}
+
+/** Every note-off the module could possibly need, used for "panic" / stop. */
+export function allOutputsOff(channel: number, baseNote: number): number[][] {
+  const messages: number[][] = []
+  for (let output = 0; output < MAX_CHANNELS; output++) {
+    const note = baseNote + output
+    if (note >= 0 && note <= 127) messages.push(noteOff(channel, note))
+  }
+  messages.push(allNotesOff(channel))
+  return messages
+}
+
+export function isWebMidiSupported(nav: Pick<Navigator, 'requestMIDIAccess'> | undefined = globalThis.navigator): boolean {
+  return !!nav && typeof nav.requestMIDIAccess === 'function'
+}

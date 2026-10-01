@@ -1,0 +1,110 @@
+# Implementation plan — Conway's Sequencer
+
+Client-side Vue 3 app that turns a binary piano roll into MIDI gates for the
+Nervous Squirrel Conway's Game module. This document is the plan the first
+iteration was built against, with what shipped and what is left.
+
+## 1. Goals and constraints
+
+| Requirement | Decision |
+| --- | --- |
+| Client-side only | Vite + Vue 3 + Pinia, static build, no backend. Songs autosave to `localStorage`, export/import as JSON. |
+| Select the MIDI output in the GUI | `navigator.requestMIDIAccess({ sysex: false })`; outputs listed in a `<select>`, choice persisted, `statechange` tracked for hot-plug. |
+| Up to 64 channels | Hard cap `MAX_CHANNELS = 64`. A channel = one module output (shown 1-based). MIDI note = `baseNote + output`. |
+| Channel = binary on/off of a MIDI note → gate | Note-on at step start, note-off at gate end. Per-channel `retrigger` (one gate per step, length = `gateLength` × step) or `tie` (consecutive steps = one gate). |
+| Sections with tempo, time signature, bars | `Section { tempo: number \| null, timeSignature {beats, unit}, bars, subdivision }`. `tempo: null` inherits from the previous section (first section falls back to 120). |
+| Draw "on" bars like a piano roll | Grid: rows = channels, columns = every step of every section. Click toggles, drag paints, keyboard toggles. |
+| Comprehensive tests, GitHub Actions → GitHub Pages | Vitest unit/component tests with coverage thresholds, Playwright e2e against the built app with a fake Web MIDI, one workflow that tests then deploys. |
+| alephvoid.com branding | Header mark + link, footer, page title, favicon; dark palette with a single green accent. |
+
+### Module facts the design relies on
+
+- 64 trigger/gate outputs, driven by MIDI notes starting at C2 (36). Public
+  listings quote "C2 / note 36 to E7 / note 100"; 64 outputs from 36 end at 99,
+  so the base note is a setting (default 36) in case a unit is offset by one.
+- Outputs can be set to trigger (fixed 20 ms pulse) or gate (follows the note).
+  Gate length only matters in gate mode; in trigger mode any gate length works.
+- MIDI channel is not documented on the public pages, so it is a setting (default 1).
+
+## 2. Architecture
+
+```
+src/
+  core/            pure TypeScript, no Vue, 100 % unit-testable
+    song.ts        types, factories, step arithmetic, invariants
+    timing.ts      tempo inheritance, step durations, section timeline, locate(time)
+    midi.ts        message builders, output→note mapping, note names
+    compile.ts     Song → sorted MidiEvent[] (the "render" step)
+    scheduler.ts   look-ahead scheduler: hands events to the port with timestamps
+    serialization.ts  JSON export/import with validation + clamping
+  stores/          Pinia
+    song.ts        the document + all edits + autosave
+    midi.ts        Web MIDI access, outputs, selection, send(), panic()
+    transport.ts   play/stop/position, wires compile + scheduler + midi
+  components/      Vue SFCs, thin over the stores
+    AppHeader, MidiPanel, TransportBar, SettingsPanel,
+    SectionsPanel, SequencerGrid (+ ChannelHeader), SongIO
+tests/e2e/         Playwright specs + fake Web MIDI fixture
+```
+
+Design choices worth knowing:
+
+- **Compile, then schedule.** The whole song is compiled to a flat, time-sorted
+  event list (pure function, deterministic, trivially testable). The scheduler
+  only walks that list. Live edits recompile and swap the list without
+  re-sending events that already went out and without hanging notes.
+- **Timestamps, not timers.** `MIDIOutput.send(data, timestamp)` with a 120 ms
+  look-ahead and a 25 ms wake-up, the standard Web Audio "tale of two clocks"
+  approach. Timer jitter affects only how early a message is queued.
+- **Step storage** is `Record<channelId, number[]>` of sorted on-step indices
+  per section: compact in JSON, cheap to toggle, no fixed-size arrays to resize
+  when a section's length changes (out-of-range steps are trimmed).
+- **Time signature semantics.** Tempo is quarter notes per minute. A beat in
+  x/8 is an eighth note, so 7/8 at 120 BPM with subdivision 2 gives 125 ms
+  steps. Steps per bar = beats × subdivision.
+- **Native objects stay out of reactivity.** `MIDIAccess` lives in a module
+  variable; the store exposes plain `OutputInfo` records.
+
+## 3. Milestones
+
+1. **Scaffold** — Vite/Vue/TS/Pinia, ESLint, Vitest, Playwright, CI. ✅
+2. **Core model + timing + MIDI + compiler + scheduler** with unit tests. ✅
+3. **Stores** (song, midi, transport) with tests, including fake timers and a
+   fake MIDI access object. ✅
+4. **UI** — MIDI picker, transport, settings, sections table, grid with
+   paint-drag, channel header, import/export. Component tests. ✅
+5. **E2E** — fake Web MIDI injected via `addInitScript`; tests for output
+   selection, section editing, drawing/persistence, 64-channel cap, playback
+   message content and timing, panic, export/import. ✅
+6. **Deploy** — single workflow: test job on every push/PR, build with
+   `BASE_PATH=/<repo>/` and deploy to Pages on `main`. ✅
+
+## 4. Test strategy
+
+| Layer | Tool | What it proves |
+| --- | --- | --- |
+| `core/*` | Vitest (node-ish, jsdom env) | Tempo inheritance, step/time math, note mapping, compile output (times, ordering, tie vs retrigger, mute, settings), scheduler behaviour with fake timers (look-ahead, loop wrap, stop → note-offs, live reload), JSON validation/clamping. |
+| `stores/*` | Vitest + Pinia | Every edit action and its invariants (64-channel cap, step trimming, id uniqueness), autosave/debounce/flush, MIDI access states and hot-plug, transport ↔ scheduler ↔ MIDI integration. |
+| `components/*` | Vitest + @vue/test-utils | Rendering, user interactions (click/drag/keyboard painting, inputs, buttons), empty and error states, keyboard shortcuts. |
+| App | Playwright, headless Chromium | Real DOM, real pointer drags, real `localStorage`, real downloads; MIDI messages asserted byte-for-byte via the fake port log, including timestamps 500 ms apart for steps 4 apart at 120 BPM. |
+
+Coverage thresholds (lines/statements/functions 85 %, branches 80 %) are
+enforced in `vite.config.ts` so CI fails if coverage regresses. Current
+coverage is ~97 % lines.
+
+## 5. Not in this iteration (candidates for next)
+
+- **Undo/redo** — the song store already funnels every edit through a few
+  actions; a command stack or snapshot history fits there.
+- **Section-spanning ties** — a tied run that crosses a section boundary
+  currently yields two gates.
+- **Swing / per-step velocity** — velocity is global because the module only
+  reads gates; swing would be a per-section offset applied in `compile.ts`.
+- **MIDI clock out / external sync** — the module has a clock input; sending
+  MIDI clock (0xF8) from the scheduler is a small addition if a MIDI-to-clock
+  converter is in the rack.
+- **Game-of-Life helpers** — seed a section from a Life pattern, or step a
+  pattern per bar, as a nod to the module's other mode.
+- **Hardware verification** — the fake MIDI port proves the bytes; a real
+  Conway's Game module should confirm the default base note (36 vs 37) and
+  channel.
