@@ -79,7 +79,8 @@ repository healthy without any paid plan (the repository is public):
   disable it or delete this workflow; the two cannot run side by side.
 - **Dependency review** (`workflows/dependency-review.yml`) fails a pull request
   that adds a dependency with a known high-severity vulnerability or a strong
-  copyleft licence.
+  copyleft licence. It requires **Dependency graph** to be enabled under the
+  repository's Advanced Security settings.
 - **OpenSSF Scorecard** (`workflows/scorecard.yml`) scores supply-chain
   practices on every push to `main` and weekly, and publishes the result so a
   badge can be shown.
@@ -87,7 +88,8 @@ repository healthy without any paid plan (the repository is public):
   [actionlint](https://github.com/rhysd/actionlint) and
   [zizmor](https://github.com/zizmorcore/zizmor) whenever anything under
   `.github/` changes, catching workflow syntax errors and security
-  anti-patterns.
+  anti-patterns. Every action is pinned to a commit SHA with the version in a
+  trailing comment; Dependabot updates both together.
 
 ## Song file format
 

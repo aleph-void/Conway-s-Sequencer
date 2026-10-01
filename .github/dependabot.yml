@@ -10,6 +10,10 @@ updates:
       time: "06:00"
       timezone: Etc/UTC
     open-pull-requests-limit: 10
+    # Wait a week after a release before proposing it, so yanked or compromised
+    # versions are usually caught upstream first.
+    cooldown:
+      default-days: 7
     labels: [dependencies, javascript]
     commit-message:
       prefix: deps
@@ -35,6 +39,8 @@ updates:
       time: "06:00"
       timezone: Etc/UTC
     labels: [dependencies, github-actions]
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: ci
     groups:
