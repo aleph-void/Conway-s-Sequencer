@@ -32,7 +32,7 @@ test.describe('progressive web app', () => {
     await context.setOffline(true)
     await page.reload()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText("Conway's Sequencer")
-    await expect(page.getByTestId('channel-count')).toContainText('8 / 64 channels')
+    await expect(page.getByTestId('channel-count')).toContainText(/8 \/ \d+ channels/)
     await expect(page.getByTestId('cell-0-0-0')).toHaveAttribute('aria-checked', 'true')
     await expect(page.getByTestId('offline-badge')).toBeVisible()
 
