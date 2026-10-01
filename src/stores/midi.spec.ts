@@ -115,12 +115,14 @@ describe('useMidiStore', () => {
     expect(store.error).toBe('boom')
   })
 
-  it('panic sends note-off for all outputs', async () => {
+  it('panic sends note-off for all outputs and the play gate', async () => {
     const store = useMidiStore()
     const out = fakeOutput('o1')
     await store.requestAccess(async () => fakeAccess([out]))
     store.panic(1, 36)
     expect(out.sent).toHaveLength(65)
+    expect(out.sent[62]![0]).toEqual([0x80, 98, 0])
+    expect(out.sent[63]![0]).toEqual([0x80, 100, 0])
     expect(out.sent[64]![0]).toEqual([0xb0, 123, 0])
   })
 

@@ -13,9 +13,11 @@ backend, and songs autosave to local storage.
 
 - **MIDI output picker.** Lists the outputs the browser can see, remembers your
   choice, and follows hot-plugging.
-- **Up to 64 channels**, matching the module's 64 outputs. Each channel maps to an
-  output number (1–64), which becomes MIDI note `baseNote + output - 1`
+- **Up to 63 channels** on the module's 64 outputs. Each channel maps to an
+  output number (1–63), which becomes MIDI note `baseNote + output - 1`
   (output 1 = C2 / note 36 by default, as the module expects).
+- **Play gate.** MIDI note 100 is held on for as long as the song is playing and
+  released when it stops, so the module's last output can act as a run/stop gate.
 - **Sections** with their own tempo, time signature, bar count and step
   resolution. Leave a section's tempo blank and it inherits the previous
   section's tempo.

@@ -38,10 +38,12 @@ describe('useTransportStore', () => {
 
     transport.play()
     expect(transport.playing).toBe(true)
-    expect(out.sent[0]).toEqual([[0x90, 36, 100], 0])
+    // The play gate goes high first, then the first step's note-on.
+    expect(out.sent[0]).toEqual([[0x90, 100, 100], 0])
+    expect(out.sent[1]).toEqual([[0x90, 36, 100], 0])
     await vi.advanceTimersByTimeAsync(600)
     // Each gate holds for its whole 125 ms step, minus the 2 ms gap before the next step.
-    expect(out.sent.map((s) => s[1])).toEqual([0, 123, 500, 623])
+    expect(out.sent.slice(1).map((s) => s[1])).toEqual([0, 123, 500, 623])
     expect(transport.positionSeconds).toBeCloseTo(0.6, 1)
     expect(transport.currentStep).toBe(4)
     expect(transport.position?.sectionIndex).toBe(0)
@@ -50,6 +52,49 @@ describe('useTransportStore', () => {
     expect(transport.playing).toBe(false)
     expect(transport.positionSeconds).toBe(0)
     expect(transport.currentStep).toBe(-1)
+    expect(out.sent.at(-1)).toEqual([[0x80, 100, 0], 600])
+  })
+
+  it('holds the play gate on note 100 while playing and releases it on stop', () => {
+    const transport = useTransportStore()
+    const gate = () => out.sent.filter((s) => s[0][1] === 100).map((s) => s[0])
+    transport.play()
+    expect(gate()).toEqual([[0x90, 100, 100]])
+    transport.stop()
+    expect(gate()).toEqual([[0x90, 100, 100], [0x80, 100, 0]])
+    transport.stop() // a second stop does not release the gate twice
+    expect(gate()).toHaveLength(2)
+  })
+
+  it('sends the play gate on the configured channel with the configured velocity', () => {
+    const song = useSongStore()
+    song.updateSettings({ midiChannel: 5, velocity: 64 })
+    const transport = useTransportStore()
+    transport.play()
+    expect(out.sent[0]![0]).toEqual([0x94, 100, 64])
+    // The gate is released on the channel it was raised on, even if the setting changed meanwhile.
+    song.updateSettings({ midiChannel: 2 })
+    transport.stop()
+    expect(out.sent.at(-1)![0]).toEqual([0x84, 100, 0])
+  })
+
+  it('releases the play gate when a non-looping song reaches its end', async () => {
+    const song = useSongStore()
+    song.updateSettings({ loop: false })
+    const transport = useTransportStore()
+    transport.play()
+    expect(out.sent.filter((s) => s[0][1] === 100)).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(8100)
+    expect(transport.playing).toBe(false)
+    expect(out.sent.filter((s) => s[0][1] === 100).map((s) => s[0])).toEqual([[0x90, 100, 100], [0x80, 100, 0]])
+  })
+
+  it('does not raise the play gate for a song that cannot play', () => {
+    const song = useSongStore()
+    song.removeSection(song.song.sections[0]!.id)
+    const transport = useTransportStore()
+    transport.play()
+    expect(out.sent).toHaveLength(0)
   })
 
   it('toggle starts and stops', () => {
@@ -96,7 +141,12 @@ describe('useTransportStore', () => {
     transport.play()
     transport.panic()
     expect(transport.playing).toBe(false)
-    expect(out.sent.filter((s) => s[0][0] === 0x80)).toHaveLength(64)
+    // Stop releases the play gate, then the flood covers 63 outputs plus the play gate again.
+    const offs = out.sent.filter((s) => s[0][0] === 0x80).map((s) => s[0])
+    expect(offs).toHaveLength(1 + 64)
+    expect(offs[0]).toEqual([0x80, 100, 0])
+    expect(offs[63]).toEqual([0x80, 98, 0])
+    expect(offs[64]).toEqual([0x80, 100, 0])
   })
 
   it('reacts to loop setting changes while playing', async () => {

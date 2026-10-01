@@ -23,7 +23,7 @@ describe('useSongStore', () => {
   })
 
   describe('channels', () => {
-    it('adds channels on the next free output up to 64', () => {
+    it('adds channels on the next free output up to 63', () => {
       const store = useSongStore()
       const ch = store.addChannel()
       expect(ch?.output).toBe(8)
@@ -49,7 +49,7 @@ describe('useSongStore', () => {
       const store = useSongStore()
       const id = store.song.channels[0]!.id
       store.updateChannel(id, { name: 'Kick', output: 99, muted: true })
-      expect(store.channelById(id)).toMatchObject({ name: 'Kick', output: 63, muted: true })
+      expect(store.channelById(id)).toMatchObject({ name: 'Kick', output: 62, muted: true })
       store.updateChannel('missing', { name: 'x' })
     })
 

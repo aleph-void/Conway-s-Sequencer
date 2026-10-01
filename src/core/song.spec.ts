@@ -34,7 +34,7 @@ describe('song factories', () => {
 
   it('createChannel names channels after their 1-based output', () => {
     expect(createChannel(0).name).toBe('Out 1')
-    expect(createChannel(63).name).toBe('Out 64')
+    expect(createChannel(62).name).toBe('Out 63')
     expect(createChannel(3, { name: 'Kick', muted: true }).muted).toBe(true)
   })
 
@@ -103,7 +103,7 @@ describe('nextFreeOutput', () => {
     expect(nextFreeOutput([createChannel(0), createChannel(2)])).toBe(1)
   })
 
-  it('returns null when all 64 outputs are used', () => {
+  it('returns null when all 63 outputs are used', () => {
     const all = Array.from({ length: MAX_CHANNELS }, (_, i) => createChannel(i))
     expect(nextFreeOutput(all)).toBeNull()
   })

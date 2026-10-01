@@ -10,7 +10,8 @@ iteration was built against, with what shipped and what is left.
 | --- | --- |
 | Client-side only | Vite + Vue 3 + Pinia, static build, no backend. Songs autosave to `localStorage`, export/import as JSON. |
 | Select the MIDI output in the GUI | `navigator.requestMIDIAccess({ sysex: false })`; outputs listed in a `<select>`, choice persisted, `statechange` tracked for hot-plug. |
-| Up to 64 channels | Hard cap `MAX_CHANNELS = 64`. A channel = one module output (shown 1-based). MIDI note = `baseNote + output`. |
+| Up to 63 channels | Hard cap `MAX_CHANNELS = 63`. A channel = one module output (shown 1-based). MIDI note = `baseNote + output`. The 64th output is reserved for the play gate. |
+| Play gate | `PLAY_GATE_NOTE = 100` goes note-on when playback starts and note-off when it stops (manual stop, end of a non-looping song, or panic). Independent of the base note. |
 | Channel = binary on/off of a MIDI note → gate | Note-on at the start of an on-step, note-off at the next off-step: a gate is held for the whole step, and consecutive on-steps form one long gate. |
 | Sections with tempo, time signature, bars | `Section { tempo: number \| null, timeSignature {beats, unit}, bars, subdivision }`. `tempo: null` inherits from the previous section (first section falls back to 120). |
 | Draw "on" bars like a piano roll | Grid: rows = channels, columns = every step of every section. Click toggles, drag paints, keyboard toggles. |
@@ -75,7 +76,7 @@ Design choices worth knowing:
 4. **UI** — MIDI picker, transport, settings, sections table, grid with
    paint-drag, channel header, import/export. Component tests. ✅
 5. **E2E** — fake Web MIDI injected via `addInitScript`; tests for output
-   selection, section editing, drawing/persistence, 64-channel cap, playback
+   selection, section editing, drawing/persistence, 63-channel cap, play gate, playback
    message content and timing, panic, export/import. ✅
 6. **Deploy** — single workflow: test job on every push/PR, build with
    `BASE_PATH=/<repo>/` and deploy to Pages on `main`. ✅
@@ -85,7 +86,7 @@ Design choices worth knowing:
 | Layer | Tool | What it proves |
 | --- | --- | --- |
 | `core/*` | Vitest (node-ish, jsdom env) | Tempo inheritance, step/time math, note mapping, compile output (times, ordering, held/merged gates, mute, settings), scheduler behaviour with fake timers (look-ahead, loop wrap, stop → note-offs, live reload), JSON validation/clamping. |
-| `stores/*` | Vitest + Pinia | Every edit action and its invariants (64-channel cap, step trimming, id uniqueness), autosave/debounce/flush, MIDI access states and hot-plug, transport ↔ scheduler ↔ MIDI integration. |
+| `stores/*` | Vitest + Pinia | Every edit action and its invariants (63-channel cap, step trimming, id uniqueness), autosave/debounce/flush, MIDI access states and hot-plug, transport ↔ scheduler ↔ MIDI integration. |
 | `components/*` | Vitest + @vue/test-utils | Rendering, user interactions (click/drag/keyboard painting, inputs, buttons), empty and error states, keyboard shortcuts. |
 | App | Playwright, headless Chromium | Real DOM, real pointer drags, real `localStorage`, real downloads; MIDI messages asserted byte-for-byte via the fake port log, including timestamps 500 ms apart for steps 4 apart at 120 BPM. |
 
