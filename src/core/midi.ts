@@ -9,7 +9,14 @@ export const CC_ALL_SOUND_OFF = 120
  * Fixed note for the play gate: held high (note-on) for as long as the song is playing and
  * released (note-off) the moment it stops. Independent of the base note setting.
  */
-export const PLAY_GATE_NOTE = 100
+export const PLAY_GATE_NOTE = 99
+/**
+ * Fixed note for the x16 clock: pulsed CLOCK_PULSES_PER_BEAT times per beat for as long as
+ * the song is playing, so the module gets a steady clock next to the sequenced gates.
+ * Independent of the base note setting.
+ */
+export const CLOCK_NOTE = 98
+export const CLOCK_PULSES_PER_BEAT = 16
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const
 
@@ -31,7 +38,7 @@ export function allNotesOff(channel: number): number[] {
   return [statusByte(CONTROL_CHANGE, channel), CC_ALL_NOTES_OFF, 0]
 }
 
-/** Module output (0..62) -> MIDI note number. Throws if the result leaves 0..127. */
+/** Module output (0..61) -> MIDI note number. Throws if the result leaves 0..127. */
 export function outputToNote(output: number, baseNote: number): number {
   if (!Number.isInteger(output) || output < 0 || output >= MAX_CHANNELS) {
     throw new RangeError(`output must be an integer in 0..${MAX_CHANNELS - 1}, got ${output}`)
@@ -48,13 +55,14 @@ export function noteName(note: number): string {
   return `${NOTE_NAMES[n % 12]}${octave}`
 }
 
-/** Every note-off the module could possibly need (outputs and the play gate), used for "panic" / stop. */
+/** Every note-off the module could possibly need (outputs, the clock and the play gate), used for "panic" / stop. */
 export function allOutputsOff(channel: number, baseNote: number): number[][] {
   const messages: number[][] = []
   for (let output = 0; output < MAX_CHANNELS; output++) {
     const note = baseNote + output
     if (note >= 0 && note <= 127) messages.push(noteOff(channel, note))
   }
+  messages.push(noteOff(channel, CLOCK_NOTE))
   messages.push(noteOff(channel, PLAY_GATE_NOTE))
   messages.push(allNotesOff(channel))
   return messages

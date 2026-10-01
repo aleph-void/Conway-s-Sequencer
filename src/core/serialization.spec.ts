@@ -22,10 +22,10 @@ describe('normalizeSong', () => {
     expect(() => normalizeSong({ channels: 'x', sections: [] })).toThrow(/channels/)
   })
 
-  it('rejects future versions and more than 63 channels', () => {
+  it('rejects future versions and more than 62 channels', () => {
     expect(() => normalizeSong({ version: 99, channels: [], sections: [] })).toThrow(/version/)
-    const channels = Array.from({ length: 64 }, (_, i) => ({ output: i % 63 }))
-    expect(() => normalizeSong({ channels, sections: [] })).toThrow(/63/)
+    const channels = Array.from({ length: 63 }, (_, i) => ({ output: i % 62 }))
+    expect(() => normalizeSong({ channels, sections: [] })).toThrow(/62/)
   })
 
   it('fills defaults for missing fields', () => {
@@ -49,11 +49,11 @@ describe('normalizeSong', () => {
       settings: { midiChannel: 42, baseNote: 120, velocity: 0 },
     })
     expect(song.sections[0]).toMatchObject({ tempo: 400, bars: 1, timeSignature: { beats: 32, unit: 4 }, subdivision: 4 })
-    expect(song.settings).toMatchObject({ midiChannel: 16, baseNote: 65, velocity: 1 })
+    expect(song.settings).toMatchObject({ midiChannel: 16, baseNote: 66, velocity: 1 })
   })
 
   it('rejects channel outputs outside the module range', () => {
-    expect(() => normalizeSong({ channels: [{ output: 63 }], sections: [] })).toThrow(/output/)
+    expect(() => normalizeSong({ channels: [{ output: 62 }], sections: [] })).toThrow(/output/)
   })
 
   it('rejects a non-numeric tempo', () => {
