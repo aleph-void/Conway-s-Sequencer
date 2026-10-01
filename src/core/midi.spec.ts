@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  PLAY_GATE_NOTE,
   allNotesOff,
   allOutputsOff,
   isWebMidiSupported,
@@ -35,14 +36,14 @@ describe('MIDI message builders', () => {
 describe('outputToNote', () => {
   it('maps output 0 to the base note', () => {
     expect(outputToNote(0, 36)).toBe(36)
-    expect(outputToNote(63, 36)).toBe(99)
+    expect(outputToNote(62, 36)).toBe(98)
   })
 
   it('rejects invalid outputs and notes', () => {
-    expect(() => outputToNote(64, 36)).toThrow(RangeError)
+    expect(() => outputToNote(63, 36)).toThrow(RangeError)
     expect(() => outputToNote(-1, 36)).toThrow(RangeError)
     expect(() => outputToNote(1.5, 36)).toThrow(RangeError)
-    expect(() => outputToNote(63, 100)).toThrow(RangeError)
+    expect(() => outputToNote(62, 100)).toThrow(RangeError)
   })
 })
 
@@ -56,17 +57,18 @@ describe('noteName', () => {
 })
 
 describe('allOutputsOff', () => {
-  it('sends a note-off for all 64 outputs plus all-notes-off', () => {
+  it('sends a note-off for all 63 outputs, the play gate, then all-notes-off', () => {
     const msgs = allOutputsOff(1, 36)
     expect(msgs).toHaveLength(65)
     expect(msgs[0]).toEqual([0x80, 36, 0])
-    expect(msgs[63]).toEqual([0x80, 99, 0])
+    expect(msgs[62]).toEqual([0x80, 98, 0])
+    expect(msgs[63]).toEqual([0x80, PLAY_GATE_NOTE, 0])
     expect(msgs[64]).toEqual([0xb0, 123, 0])
   })
 
   it('skips notes above 127', () => {
     const msgs = allOutputsOff(1, 100)
-    expect(msgs).toHaveLength(28 + 1)
+    expect(msgs).toHaveLength(28 + 1 + 1)
   })
 })
 

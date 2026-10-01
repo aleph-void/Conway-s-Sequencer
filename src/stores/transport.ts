@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { compileSong } from '../core/compile'
+import { PLAY_GATE_NOTE, noteOff, noteOn } from '../core/midi'
 import { Scheduler } from '../core/scheduler'
 import { locate, type Position } from '../core/timing'
 import { useMidiStore } from './midi'
@@ -23,12 +24,34 @@ export const useTransportStore = defineStore('transport', () => {
   const currentStep = computed(() => (playing.value ? (position.value?.globalStep ?? -1) : -1))
 
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+
+  /**
+   * The play gate: note PLAY_GATE_NOTE is held on for the whole time the song is playing.
+   * The pending note-off is remembered so the gate is released on the channel it was
+   * raised on, even if the MIDI channel setting changes mid-song.
+   */
+  let gateOff: number[] | null = null
+
+  function raiseGate() {
+    if (gateOff) return
+    const { midiChannel, velocity } = songStore.song.settings
+    gateOff = noteOff(midiChannel, PLAY_GATE_NOTE)
+    midi.send(noteOn(midiChannel, PLAY_GATE_NOTE, velocity), now())
+  }
+
+  function releaseGate() {
+    if (!gateOff) return
+    midi.send(gateOff, now())
+    gateOff = null
+  }
+
   const scheduler = new Scheduler({
     send: (data, at) => midi.send(data, at),
     now,
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
     onStop: () => {
+      releaseGate()
       playing.value = false
       positionSeconds.value = 0
       stopFrames()
@@ -62,16 +85,21 @@ export const useTransportStore = defineStore('transport', () => {
   function play(fromSeconds = 0) {
     if (songStore.duration <= 0) return
     reload()
+    // The gate goes high before the first step so the module sees "playing" first.
+    raiseGate()
     scheduler.start(fromSeconds)
     playing.value = scheduler.isRunning
     if (playing.value) {
       stopFrames()
       pump()
+    } else {
+      releaseGate()
     }
   }
 
   function stop() {
     scheduler.stop()
+    releaseGate()
     playing.value = false
     positionSeconds.value = 0
     stopFrames()

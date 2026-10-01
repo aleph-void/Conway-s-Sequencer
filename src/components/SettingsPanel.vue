@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { noteName } from '../core/midi'
 import { MAX_CHANNELS } from '../core/song'
+import { PLAY_GATE_NOTE } from '../core/midi'
 import { useSongStore } from '../stores/song'
 
 const store = useSongStore()
@@ -51,9 +52,10 @@ function num(event: Event): number {
       </label>
     </div>
     <p class="muted note">
-      Output 1 = {{ noteName(settings.baseNote) }} ({{ settings.baseNote }}), output 64 =
+      Output 1 = {{ noteName(settings.baseNote) }} ({{ settings.baseNote }}), output {{ MAX_CHANNELS }} =
       {{ noteName(settings.baseNote + MAX_CHANNELS - 1) }} ({{ settings.baseNote + MAX_CHANNELS - 1 }}). A gate stays
-      high for every step it is drawn on and only drops at the next empty step.
+      high for every step it is drawn on and only drops at the next empty step. The play gate on
+      {{ noteName(PLAY_GATE_NOTE) }} ({{ PLAY_GATE_NOTE }}) is held high while the song is playing.
     </p>
   </section>
 </template>

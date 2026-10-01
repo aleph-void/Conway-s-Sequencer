@@ -125,12 +125,12 @@ test.describe('drawing gates', () => {
     })
   })
 
-  test('supports up to 64 channels', async ({ midiPage: page }) => {
+  test('supports up to 63 channels', async ({ midiPage: page }) => {
     const add = page.getByTestId('add-channel')
-    for (let i = 8; i < 64; i++) await add.click()
-    await expect(page.getByTestId('channel-count')).toContainText('64 / 64 channels')
+    for (let i = 8; i < 63; i++) await add.click()
+    await expect(page.getByTestId('channel-count')).toContainText('63 / 63 channels')
     await expect(add).toBeDisabled()
-    await expect(page.getByTestId('channel-output').last()).toHaveValue('64')
+    await expect(page.getByTestId('channel-output').last()).toHaveValue('63')
   })
 })
 
@@ -143,22 +143,26 @@ test.describe('playback', () => {
     await expect(page.getByTestId('play')).toContainText('Stop')
     await expect(page.getByTestId('section-readout')).toContainText('A · bar 1')
 
-    await expect.poll(async () => (await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(4)
+    await expect.poll(async () => (await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(5)
     const log = await midiLog(page)
     expect(log.every((e) => e.port === 'conway')).toBe(true)
-    const first = log.slice(0, 4).map((e) => e.data)
+    // The play gate (note 100) goes high before the first step.
+    const first = log.slice(0, 5).map((e) => e.data)
     expect(first).toEqual([
+      [0x90, 100, 100],
       [0x90, 36, 100],
       [0x80, 36, 0],
       [0x90, 38, 100],
       [0x80, 38, 0],
     ])
-    expect(log[0]!.timestamp).toBeDefined()
-    expect(log[2]!.timestamp! - log[0]!.timestamp!).toBeCloseTo(500, -1)
+    expect(log[1]!.timestamp).toBeDefined()
+    expect(log[3]!.timestamp! - log[1]!.timestamp!).toBeCloseTo(500, -1)
 
     await page.getByTestId('play').click()
     await expect(page.getByTestId('play')).toContainText('Play')
     await expect(page.getByTestId('position')).toHaveText('0:00')
+    // Stopping releases the play gate.
+    expect((await midiLog(page)).at(-1)!.data).toEqual([0x80, 100, 0])
   })
 
   test('solo plays only the soloed channels and marks the rest as muted', async ({ midiPage: page }) => {
@@ -195,13 +199,17 @@ test.describe('playback', () => {
     await page.locator('body').click({ position: { x: 5, y: 5 } })
     await page.keyboard.press('Space')
     await expect(page.getByTestId('play')).toContainText('Stop')
+    expect((await midiLog(page))[0]!.data).toEqual([0x90, 100, 100])
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('play')).toContainText('Play')
     const log = await midiLog(page)
     const offs = log.filter((e) => e.data[0] === 0x80)
-    expect(offs).toHaveLength(64)
-    expect(offs[0]!.data).toEqual([0x80, 36, 0])
-    expect(offs[63]!.data).toEqual([0x80, 99, 0])
+    // Stop releases the play gate, then panic floods all 63 outputs plus the play gate.
+    expect(offs).toHaveLength(1 + 64)
+    expect(offs[0]!.data).toEqual([0x80, 100, 0])
+    expect(offs[1]!.data).toEqual([0x80, 36, 0])
+    expect(offs[63]!.data).toEqual([0x80, 98, 0])
+    expect(offs[64]!.data).toEqual([0x80, 100, 0])
     expect(log.at(-1)!.data).toEqual([0xb0, 123, 0])
   })
 
@@ -215,7 +223,8 @@ test.describe('playback', () => {
     await page.getByTestId('play').click()
     await expect.poll(async () => (await midiLog(page)).length).toBeGreaterThanOrEqual(2)
     const log = await midiLog(page)
-    expect(log[0]!.data).toEqual([0x94, 63, 100])
+    expect(log[0]!.data).toEqual([0x94, 100, 100])
+    expect(log[1]!.data).toEqual([0x94, 63, 100])
     await page.getByTestId('play').click()
   })
 })

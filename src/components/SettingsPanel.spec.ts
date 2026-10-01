@@ -19,6 +19,7 @@ describe('SettingsPanel', () => {
     expect(wrapper.find('[data-testid="gate-length"]').exists()).toBe(false)
     expect(store.song.settings).toMatchObject({ midiChannel: 10, baseNote: 48, velocity: 127 })
     expect(wrapper.text()).toContain('Output 1 = C3 (48)')
-    expect(wrapper.text()).toContain('output 64 = D#8 (111)')
+    expect(wrapper.text()).toContain('output 63 = D8 (110)')
+    expect(wrapper.text()).toContain('play gate on E7 (100)')
   })
 })
