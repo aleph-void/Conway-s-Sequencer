@@ -52,9 +52,15 @@ message sent.
 
 `.github/workflows/ci.yml` runs lint, typecheck, unit tests with coverage
 thresholds, the production build and the e2e suite on every push and pull
-request. On a push to `main` it then builds with `BASE_PATH=/<repo>/` and
-deploys `dist/` to GitHub Pages. Enable Pages for the repository with
-**Source: GitHub Actions** once, and every merge to `main` ships.
+request. On a push to `main` it then builds the bundle with
+`BASE_PATH=/<repo>/` and commits the contents of `dist/` to the `gh-pages`
+branch (one orphan commit per deploy, so the branch stays small).
+
+One-time setup: in the repository settings open **Pages**, set **Source** to
+**Deploy from a branch**, and pick `gh-pages` with folder `/ (root)`. Every
+merge to `main` then ships. The bundle in `gh-pages` is self-contained
+(`index.html`, hashed JS/CSS, favicon, `.nojekyll`), so it can also be served
+from any static host.
 
 ## Song file format
 

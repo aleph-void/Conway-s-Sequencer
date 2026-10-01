@@ -61,11 +61,13 @@ jobs:
           path: coverage/lcov.info
           retention-days: 7
 
-  build-pages:
-    name: Build for GitHub Pages
+  publish:
+    name: Publish bundle to gh-pages branch
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -82,21 +84,12 @@ jobs:
           # Project sites are served from https://<owner>.github.io/<repo>/
           BASE_PATH: /${{ github.event.repository.name }}/
 
-      - uses: actions/upload-pages-artifact@v3
+      # Commits the contents of dist/ to the gh-pages branch (force-pushed, single commit).
+      # In the repo settings choose Pages → Source: "Deploy from a branch" → gh-pages / (root).
+      - uses: peaceiris/actions-gh-pages@v4
         with:
-          path: dist
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build-pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: 'Deploy ${{ github.sha }}'
