@@ -20,6 +20,7 @@ iteration was built against, with what shipped and what is left.
 | Draw "on" bars like a piano roll | Grid: rows = channels, columns = every step of every section. Click toggles, drag paints, keyboard toggles. |
 | Comprehensive tests, GitHub Actions → GitHub Pages | Vitest unit/component tests with coverage thresholds, Playwright e2e against the built app with a fake Web MIDI, one workflow that tests then deploys. |
 | Editor-first layout | The shell is viewport-sized. A one-line toolbar holds the MIDI output picker and transport; sections, module settings and song I/O sit in a collapsible drawer (`stores/ui.ts`, persisted). The gate grid flexes to fill the remaining height. |
+| Module view | `core/module.ts` models the panel: 64 outputs in an 8x8 field following consecutive notes from the base note (`moduleLayout` maps channels, the clock and the play gate onto them; `highNotes` says which notes are high at a playback position, pulse width and 2 ms gate gap included, derived from the song rather than from the bytes sent so it works without a MIDI output). `components/ModuleView.vue` renders it beside the grid (above it below 1000px); shown from the toolbar, persisted in `stores/ui.ts`. |
 | Tablets and phones | Below 1200px wide (or 520px tall) the shell scrolls as a page instead of being viewport-sized (`App.vue`). Below 768px (`style.css`, `App.vue`) phones get the toolbar and drawer stacked, a 164px channel column whose controls wrap onto two lines, and the drawer closed by default. `(pointer: coarse)` widens steps, heightens rows and gives 36px controls. In the grid a touch tap toggles on click and a swipe pans (`touch-action: pan-x pan-y`); mouse and pen still paint from pointerdown. |
 | alephvoid.com branding | Aleph Void logo mark (from the alephvoid.com repo) in the header and footer, page title, favicon; the site's near-black palette with the violet accent (`#6d28d9` / `#8b5cf6`), Inter for UI text and JetBrains Mono for labels. Tokens live in `src/style.css`. |
 
@@ -44,6 +45,7 @@ src/
     midi.ts        message builders, output→note mapping, note names
     compile.ts     Song → sorted MidiEvent[] (the "render" step)
     scheduler.ts   look-ahead scheduler: hands events to the port with timestamps
+    module.ts      the module's panel: output layout and which notes are high at a position
     serialization.ts  JSON export/import with validation + clamping
     library.ts     the song library in localStorage: index + one key per song
   stores/          Pinia
@@ -53,7 +55,8 @@ src/
   components/      Vue SFCs, thin over the stores
     AppHeader, MidiPanel, TransportBar, SettingsPanel,
     SectionsPanel, SequencerGrid (+ ChannelHeader), SongIO,
-    SongBrowser (slide-out drawer listing the saved songs)
+    SongBrowser (slide-out drawer listing the saved songs),
+    ModuleView (live picture of the module's 64 outputs)
 tests/e2e/         Playwright specs + fake Web MIDI fixture
 ```
 
