@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { clampBarRange, type BarClip, type BarRange } from '../core/bars'
 import { clampRange, rangeFromCorners, type Block, type Cell, type CellRange } from '../core/clipboard'
 import { useSongStore } from './song'
 import { useTransportStore } from './transport'
@@ -14,6 +15,11 @@ import { useTransportStore } from './transport'
  * start of the song, or of the loop points, when stopped), and its first channel on the
  * selection's first channel when there is a selection, else on the channel it was copied
  * from. The pasted cells become the selection, so where it landed is visible.
+ *
+ * Whole bars are edited through the loop points: the bars between them are the selected
+ * bars, and they can be copied, cut and deleted (the song gets shorter) on a clipboard of
+ * their own, which also outlives a switch of song. Pasting them puts them in front of the
+ * bar the cursor is in (the song gets longer), and they become the loop points.
  */
 export const useEditorStore = defineStore('editor', () => {
   const songStore = useSongStore()
@@ -25,6 +31,7 @@ export const useEditorStore = defineStore('editor', () => {
   const clipboard = ref<Block | null>(null)
   /** Channel the clipboard's first row was copied from: where it goes back without a selection. */
   const clipboardChannel = ref(0)
+  const barClipboard = ref<BarClip | null>(null)
 
   /** The selection trimmed to the song as it is now, or null when nothing of it is left. */
   const liveSelection = computed(() =>
@@ -32,6 +39,21 @@ export const useEditorStore = defineStore('editor', () => {
   )
   const hasSelection = computed(() => liveSelection.value !== null)
   const hasClipboard = computed(() => clipboard.value !== null)
+
+  /** The selected bars: the loop points, trimmed to the song, or null when there are none. */
+  const selectedBars = computed<BarRange | null>(() => {
+    const range = songStore.song.settings.loopRange
+    return range ? clampBarRange(range, songStore.barTotal) : null
+  })
+  const hasSelectedBars = computed(() => selectedBars.value !== null)
+  const hasBarClipboard = computed(() => barClipboard.value !== null)
+  /** The bar the cursor is in, on the whole-song bar axis: where pasted bars go. */
+  const cursorBar = computed(() => {
+    const at = transport.position
+    const timing = at ? songStore.timeline[at.sectionIndex] : undefined
+    if (!at || !timing) return 0
+    return timing.startBar + Math.floor(at.stepInSection / timing.stepsPerBar)
+  })
 
   /** Start a selection at one cell. */
   function selectCell(cell: Cell) {
@@ -84,6 +106,33 @@ export const useEditorStore = defineStore('editor', () => {
     return written
   }
 
+  function copyBars(): boolean {
+    const range = selectedBars.value
+    if (!range) return false
+    const clip = songStore.copyBars(range)
+    if (!clip) return false
+    barClipboard.value = clip
+    return true
+  }
+
+  /** Take the selected bars out of the song; the loop points go with them. */
+  function deleteBars(): boolean {
+    const range = selectedBars.value
+    if (!range) return false
+    return songStore.deleteBars(range) !== null
+  }
+
+  function cutBars(): boolean {
+    return copyBars() && deleteBars()
+  }
+
+  /** Put the bar clipboard down in front of the cursor's bar (see above). Returns the range it occupies. */
+  function pasteBars(): BarRange | null {
+    const clip = barClipboard.value
+    if (!clip) return null
+    return songStore.insertBars(clip, cursorBar.value)
+  }
+
   // A selection belongs to the song it was made in.
   watch(() => songStore.currentId, clearSelection)
 
@@ -94,6 +143,11 @@ export const useEditorStore = defineStore('editor', () => {
     clipboard,
     hasSelection,
     hasClipboard,
+    barClipboard,
+    selectedBars,
+    hasSelectedBars,
+    hasBarClipboard,
+    cursorBar,
     selectCell,
     extendTo,
     clearSelection,
@@ -101,5 +155,9 @@ export const useEditorStore = defineStore('editor', () => {
     cut,
     deleteSelection,
     paste,
+    copyBars,
+    cutBars,
+    deleteBars,
+    pasteBars,
   }
 })

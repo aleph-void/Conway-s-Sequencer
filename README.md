@@ -53,6 +53,20 @@ backend, and songs autosave to local storage.
   as buttons, and the clipboard survives switching songs, so a block can be
   carried from one song to another. Selection needs a mouse or pen; on a touch
   screen a drag scrolls the grid.
+- **Cut, copy, paste and delete whole bars.** The bars between the loop points
+  (see below) are the selected bars, and the buttons above the grid work on
+  them as time rather than as cells: Delete bars takes them out of the song,
+  gates and all, so the bars after them move up and the song gets shorter; Cut
+  bars does the same but keeps them on a clipboard of their own; Copy bars just
+  copies them; and Insert bars at cursor puts the clipboard back in front of
+  the bar the cursor is in (click a bar number to put it there), pushing the
+  rest of the song along. The keys are the block's with Shift: Ctrl/Cmd+Shift+C,
+  Ctrl/Cmd+Shift+X, Ctrl/Cmd+Shift+V and Shift+Delete. Bars that keep time the
+  way the section they land in does join it; bars with another time signature
+  or step resolution become a section of their own, splitting the one they land
+  inside, and keep the tempo and name of the section they came from. The pasted
+  bars become the loop points so they show, and the clipboard survives switching
+  songs.
 - **Place the cursor** by clicking a section header or a bar number: the cursor
   goes to the step under the pointer (Enter/Space on a focused header puts it at
   the header's start). While playing, playback jumps there and carries on; while
@@ -95,7 +109,8 @@ backend, and songs autosave to local storage.
   stays between the points, across sections and tempo changes, and the Loop
   box decides whether the range repeats or plays once and stops. Gates that
   cross a loop point are cut cleanly at it, and the points are saved with the
-  song.
+  song. The same range is the bar selection the Cut, Copy and Delete bars
+  buttons act on (see above).
 - **JSON export/import.**
 - **Works offline and installs as an app.** The site is a progressive web app:
   a service worker precaches the whole build on the first visit, so it loads
