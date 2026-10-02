@@ -1,8 +1,10 @@
 import {
   MAX_BARS,
   MAX_CHANNELS,
+  MAX_SWING,
   MAX_TEMPO,
   MIN_BARS,
+  MIN_SWING,
   MIN_TEMPO,
   SONG_VERSION,
   SUBDIVISIONS,
@@ -98,6 +100,14 @@ function normalizeSection(raw: unknown, index: number, seenIds: Set<string>, cha
   const subNum = Math.round(asNumber(raw.subdivision, 4))
   const subdivision: Subdivision = (SUBDIVISIONS as readonly number[]).includes(subNum) ? (subNum as Subdivision) : 4
 
+  // Like tempo, a missing or null swing inherits; anything else is clamped to the usable range.
+  let swing: number | null = null
+  if (raw.swing !== null && raw.swing !== undefined) {
+    const w = asNumber(raw.swing, NaN)
+    if (!Number.isFinite(w)) throw new SongValidationError(`section ${index} swing must be a number or null`)
+    swing = clamp(w, MIN_SWING, MAX_SWING)
+  }
+
   const section: Section = {
     id,
     name: asString(raw.name, `Section ${index + 1}`),
@@ -105,6 +115,7 @@ function normalizeSection(raw: unknown, index: number, seenIds: Set<string>, cha
     timeSignature: { beats, unit },
     bars,
     subdivision,
+    swing,
     steps: {},
   }
 

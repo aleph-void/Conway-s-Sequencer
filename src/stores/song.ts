@@ -16,8 +16,10 @@ import { normalizeSong, parseSong, serializeSong } from '../core/serialization'
 import {
   MAX_BARS,
   MAX_CHANNELS,
+  MAX_SWING,
   MAX_TEMPO,
   MIN_BARS,
+  MIN_SWING,
   MIN_TEMPO,
   clamp,
   clampStepsToLength,
@@ -37,7 +39,7 @@ import {
   type Song,
   type SongSettings,
 } from '../core/song'
-import { buildTimeline, loopRangeSeconds, resolveTempos, totalDuration, totalSteps } from '../core/timing'
+import { buildTimeline, loopRangeSeconds, resolveSwings, resolveTempos, totalDuration, totalSteps } from '../core/timing'
 
 /** Delay between the last edit and the autosave write. */
 export const AUTOSAVE_DEBOUNCE_MS = 250
@@ -71,6 +73,7 @@ export const useSongStore = defineStore('song', () => {
 
   const timeline = computed(() => buildTimeline(song.value))
   const resolvedTempos = computed(() => resolveTempos(song.value.sections))
+  const resolvedSwings = computed(() => resolveSwings(song.value.sections))
   const duration = computed(() => totalDuration(timeline.value))
   const stepTotal = computed(() => totalSteps(timeline.value))
   const barTotal = computed(() => totalBars(song.value.sections))
@@ -138,6 +141,7 @@ export const useSongStore = defineStore('song', () => {
       bars: template?.bars ?? 4,
       subdivision: template?.subdivision ?? 4,
       tempo: null,
+      swing: null,
       ...overrides,
     })
     sections.splice(after + 1, 0, section)
@@ -188,6 +192,9 @@ export const useSongStore = defineStore('song', () => {
     if (!section) return
     if (patch.tempo !== undefined && patch.tempo !== null) {
       patch.tempo = Number.isFinite(patch.tempo) ? clamp(patch.tempo, MIN_TEMPO, MAX_TEMPO) : null
+    }
+    if (patch.swing !== undefined && patch.swing !== null) {
+      patch.swing = Number.isFinite(patch.swing) ? clamp(patch.swing, MIN_SWING, MAX_SWING) : null
     }
     if (patch.bars !== undefined) patch.bars = clamp(Math.round(patch.bars), MIN_BARS, MAX_BARS)
     if (patch.timeSignature) {
@@ -506,6 +513,7 @@ export const useSongStore = defineStore('song', () => {
     lastSavedAt,
     timeline,
     resolvedTempos,
+    resolvedSwings,
     duration,
     stepTotal,
     barTotal,

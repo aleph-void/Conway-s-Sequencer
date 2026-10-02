@@ -25,10 +25,22 @@ backend, and songs autosave to local storage.
   notes 36–99), and can be changed in the module settings. See
   [Syncing Pam's Pro Workout](#syncing-pams-pro-workout) for a patch that uses
   these two outputs to clock and run another module.
-- **Sections** with their own tempo, time signature, bar count and step
-  resolution. Leave a section's tempo blank and it inherits the previous
-  section's tempo. Reorder sections by dragging the ⋮⋮ grip (or focus it and
+- **Sections** with their own tempo, time signature, bar count, step
+  resolution and swing. Leave a section's tempo or swing blank and it inherits
+  the previous section's. Reorder sections by dragging the ⋮⋮ grip (or focus it and
   press ↑/↓), and duplicate one, notes included, with ⧉.
+- **Swing.** Each section has a swing percentage, the MPC-style figure most
+  DAWs and grooveboxes use: 50 % is straight, 67 % a triplet feel (the
+  off-steps land on the last third of a triplet) and 75 % the hardest shuffle,
+  with the off-steps a dotted step late. It works on the section's step grid:
+  the steps of every beat are paired up and the second step of each pair is
+  pushed late to that fraction of the pair, so with 4 steps per beat it is
+  sixteenth swing and with 2 it is eighth swing. The first step of a pair never
+  moves, so beats and bars stay put, and a gate drawn on a straight step holds
+  on until the swung step after it starts, so gates stay back to back. The x16
+  clock is not swung, like a DAW's MIDI clock, so gear following it keeps
+  straight time while the gates shuffle around it. Swing is saved with the
+  song.
 - **Draw gates** by clicking or click-dragging across the grid; Enter/Space
   toggles the focused cell for keyboard users.
 - **Select, copy and paste blocks.** Shift+drag across the grid selects a block
@@ -255,6 +267,7 @@ import and out-of-range values are clamped; see `src/core/serialization.ts`.
       "timeSignature": { "beats": 4, "unit": 4 },
       "bars": 4,
       "subdivision": 4,                // steps per beat
+      "swing": 66,                     // 50..75, 50 = straight; null = inherit from the previous section
       "steps": { "ch_1": [0, 4, 8, 12] } // "on" step indices per channel
     }
   ]

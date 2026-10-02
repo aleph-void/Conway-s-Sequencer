@@ -50,6 +50,21 @@ describe('SectionsPanel', () => {
     expect(store.song.sections[0]!.tempo).toBeNull()
   })
 
+  it('edits swing and shows the inherited value', async () => {
+    const store = useSongStore()
+    store.addSection()
+    const wrapper = mount(SectionsPanel)
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows[0]!.get('[data-testid="swing-inherited"]').text()).toContain('50')
+    await rows[0]!.get('[data-testid="section-swing"]').setValue('66')
+    expect(store.song.sections[0]!.swing).toBe(66)
+    expect(rows[0]!.find('[data-testid="swing-inherited"]').exists()).toBe(false)
+    expect(rows[1]!.get('[data-testid="swing-inherited"]').text()).toContain('66')
+    await rows[0]!.get('[data-testid="section-swing"]').setValue('')
+    expect(store.song.sections[0]!.swing).toBeNull()
+    expect(rows[1]!.get('[data-testid="swing-inherited"]').text()).toContain('50')
+  })
+
   it('moves, duplicates, clears and deletes sections', async () => {
     const store = useSongStore()
     const first = store.song.sections[0]!

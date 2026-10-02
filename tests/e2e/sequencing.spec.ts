@@ -255,6 +255,44 @@ test.describe('playback', () => {
     expect((await midiLog(page)).at(-1)!.data).toEqual([0x80, 99, 0])
   })
 
+  test('swings the off-steps late and keeps the clock straight', async ({ midiPage: page }) => {
+    await enableMidi(page)
+    const row = page.getByTestId('sections-table').locator('tbody tr').first()
+    await expect(row.getByTestId('swing-inherited')).toContainText('50')
+    await row.getByTestId('section-swing').fill('75')
+    await row.getByTestId('section-swing').press('Tab')
+    await expect(row.getByTestId('swing-inherited')).toHaveCount(0)
+    // Step 0 on channel 1, step 1 on channel 2: at 120 BPM a sixteenth is 125 ms, so with 75 %
+    // swing step 1 starts 187.5 ms in and step 0's gate holds on until then.
+    await page.getByTestId('cell-0-0-0').click()
+    await page.getByTestId('cell-1-0-1').click()
+    await page.getByTestId('play').click()
+    await expect(page.getByTestId('play')).toContainText('Pause')
+
+    const gates = (log: MidiLogEntry[]) => log.filter((e) => e.data[1] === 36 || e.data[1] === 37)
+    await expect.poll(async () => gates(await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(4)
+    const log = await midiLog(page)
+    const [on0, off0, on1, off1] = gates(log)
+    expect([on0!.data, off0!.data, on1!.data, off1!.data]).toEqual([
+      [0x90, 36, 100],
+      [0x80, 36, 0],
+      [0x90, 37, 100],
+      [0x80, 37, 0],
+    ])
+    const t0 = on0!.timestamp!
+    expect(off0!.timestamp! - t0).toBeCloseTo(187.5 - 2, 0)
+    expect(on1!.timestamp! - t0).toBeCloseTo(187.5, 0)
+    expect(off1!.timestamp! - t0).toBeCloseTo(250 - 2, 0)
+    // The clock is untouched: still one pulse every 31.25 ms.
+    const clockOns = log.filter((e) => e.data[0] === 0x90 && e.data[1] === 98)
+    expect(clockOns[1]!.timestamp! - clockOns[0]!.timestamp!).toBeCloseTo(31.25, 1)
+    expect(clockOns[2]!.timestamp! - clockOns[0]!.timestamp!).toBeCloseTo(62.5, 1)
+
+    await page.getByTestId('stop').click()
+    // The swing is saved with the song.
+    await expect.poll(async () => (await storedSong(page)).sections?.[0]?.swing).toBe(75)
+  })
+
   test('pauses where the cursor is, resumes from there and resets to the start', async ({ midiPage: page }) => {
     await enableMidi(page)
     await page.getByTestId('cell-0-0-0').click()

@@ -1,6 +1,6 @@
 import { CLOCK_NOTE, CLOCK_PULSES_PER_BEAT, noteOff, noteOn, outputToNote } from './midi'
 import { groupRuns, isChannelSilenced, type Section, type Song } from './song'
-import { buildTimeline, totalDuration, type SectionTiming } from './timing'
+import { buildTimeline, stepOffsetSeconds, totalDuration, type SectionTiming } from './timing'
 
 export interface MidiEvent {
   /** Seconds from song start. */
@@ -29,11 +29,14 @@ export const MIN_GAP_SECONDS = 0.002
  *
  * A gate goes high at the start of an on-step and stays high for the whole step. If the
  * following step is also on, the gate is held through it, so a run of consecutive on-steps
- * is one gate that only drops at the next off-step (or the end of the section).
+ * is one gate that only drops at the next off-step (or the end of the section). Step starts
+ * follow the section's swing (see `swingDelay` in core/timing.ts): a swung step starts late and
+ * the step before it holds on until it does, so the gates stay back to back.
  *
  * On top of the drawn gates, the x16 clock on CLOCK_NOTE pulses CLOCK_PULSES_PER_BEAT times
  * per beat of every section, following each section's tempo and time signature. Mute and
- * solo never touch it.
+ * solo never touch it, and neither does swing: like a DAW's MIDI clock it stays straight, so
+ * gear following it keeps time while the gates shuffle around it.
  *
  * Pure: the same song always yields the same events.
  */
@@ -55,8 +58,8 @@ export function compileSong(song: Song): CompiledSong {
       const off = noteOff(midiChannel, note)
       const valid = steps.filter((s) => s >= 0 && s < timing.stepCount)
       for (const [firstStep, lastStep] of groupRuns(valid)) {
-        const start = timing.startTime + firstStep * timing.stepDuration
-        const fullLength = (lastStep + 1 - firstStep) * timing.stepDuration
+        const start = timing.startTime + stepOffsetSeconds(timing, firstStep)
+        const fullLength = timing.startTime + stepOffsetSeconds(timing, lastStep + 1) - start
         // Drop just before the next step so a gate starting there is seen as a fresh note-on.
         const length = Math.max(MIN_GAP_SECONDS, fullLength - MIN_GAP_SECONDS)
         events.push({ time: start, kind: 'on', note, channelId: channel.id, data: on })
