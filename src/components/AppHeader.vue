@@ -112,16 +112,34 @@ h1 {
 }
 
 @media (max-width: 767px) {
+  .header {
+    padding: 10px 12px;
+  }
+
   .brand-name {
     display: none;
   }
 
   .header-inner {
-    gap: 16px;
+    gap: 12px;
   }
 
   .title {
-    padding-left: 16px;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding-left: 12px;
+  }
+
+  h1 {
+    font-size: 16px;
+  }
+
+  .song-name {
+    width: auto;
+    max-width: 100%;
   }
 }
 </style>

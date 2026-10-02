@@ -126,7 +126,8 @@ function remove(section: Section) {
       <button class="primary" data-testid="add-section" @click="store.addSection()">+ Add section</button>
     </div>
     <p v-if="store.song.sections.length === 0" class="muted">No sections yet. Add one to start drawing gates.</p>
-    <table v-else class="sections" data-testid="sections-table">
+    <div v-else class="table-scroll">
+      <table class="sections" data-testid="sections-table">
       <thead>
         <tr>
           <th class="sr-only">Reorder</th>
@@ -236,7 +237,8 @@ function remove(section: Section) {
           </td>
         </tr>
       </tbody>
-    </table>
+      </table>
+    </div>
   </section>
 </template>
 
@@ -250,6 +252,23 @@ function remove(section: Section) {
 
 .head h2 {
   margin: 0;
+}
+
+@media (max-width: 767px) {
+  .head {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+/*
+ * Eight columns of inputs do not fit a phone: the table scrolls sideways within the panel.
+ * Positioned so the absolutely placed .sr-only header cells stay inside the scroll area
+ * instead of widening the page.
+ */
+.table-scroll {
+  position: relative;
+  overflow-x: auto;
 }
 
 .sections {

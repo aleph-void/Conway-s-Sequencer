@@ -99,4 +99,22 @@ select {
   min-width: 200px;
   max-width: 280px;
 }
+
+@media (max-width: 767px) {
+  label {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  select {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .status {
+    white-space: normal;
+    max-width: none;
+  }
+}
 </style>

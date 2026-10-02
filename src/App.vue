@@ -162,6 +162,11 @@ button.active .glyph {
   gap: 12px;
 }
 
+/* Grid items default to min-width:auto, which would let the sections table widen the page. */
+.drawer > * {
+  min-width: 0;
+}
+
 .drawer-side {
   display: flex;
   flex-direction: column;
@@ -183,6 +188,25 @@ button.active .glyph {
   .drawer {
     max-height: 45vh;
     overflow: auto;
+  }
+}
+
+/*
+ * Tablets, small windows and landscape phones scroll as a page. The viewport-sized shell
+ * only works when the toolbar, the open drawer and a useful slice of grid all fit, which
+ * they do not below desktop width or on a very short screen. With the drawer closed the
+ * grid still stretches to fill the screen.
+ */
+@media (max-width: 1199px), (max-height: 520px) {
+  .app {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .drawer {
+    max-height: none;
+    overflow: visible;
   }
 }
 
@@ -219,5 +243,37 @@ button.active .glyph {
 
 .footer-copy a:hover {
   color: var(--accent-light);
+}
+
+/* Phones: the toolbar stacks MIDI, transport and actions; everything else is a single column. */
+@media (max-width: 767px) {
+  .layout {
+    gap: 8px;
+    /* The Song browser tab still needs its gutter on the left; keep clear of notches. */
+    padding: 8px calc(8px + env(safe-area-inset-right, 0px)) 8px calc(36px + env(safe-area-inset-left, 0px));
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .toolbar-actions {
+    margin-left: 0;
+  }
+
+  .toolbar-actions button {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  .footer {
+    justify-content: center;
+    text-align: center;
+    gap: 4px 16px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
 }
 </style>

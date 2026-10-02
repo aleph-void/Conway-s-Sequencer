@@ -72,6 +72,33 @@ describe('SequencerGrid', () => {
     wrapper.unmount()
   })
 
+  it('toggles on a finger tap and leaves a touch drag to the browser', async () => {
+    const store = useSongStore()
+    const wrapper = mount(SequencerGrid, { attachTo: document.body })
+    const section = store.song.sections[0]!
+    const channel = store.song.channels[0]!
+    const cell = (step: number) => wrapper.get(`[data-testid="cell-0-0-${step}"]`)
+
+    // A touch pointerdown draws nothing: the browser may still turn it into a scroll.
+    await cell(0).trigger('pointerdown', { button: 0, buttons: 1, pointerType: 'touch' })
+    expect(section.steps[channel.id]).toBeUndefined()
+    // Neither does moving the finger across cells.
+    await cell(1).trigger('pointerenter', { buttons: 1, pointerType: 'touch' })
+    expect(section.steps[channel.id]).toBeUndefined()
+    // The tap's click is what toggles.
+    await cell(0).trigger('click')
+    expect(section.steps[channel.id]).toEqual([0])
+    await cell(0).trigger('click')
+    expect(section.steps[channel.id]).toBeUndefined()
+
+    // A mouse paints on pointerdown and its click must not toggle the cell back.
+    await cell(3).trigger('pointerdown', { button: 0, buttons: 1, pointerType: 'mouse' })
+    await cell(3).trigger('click')
+    expect(section.steps[channel.id]).toEqual([3])
+    window.dispatchEvent(new Event('pointerup'))
+    wrapper.unmount()
+  })
+
   it('ties consecutive on-steps into one continuous bar', async () => {
     const store = useSongStore()
     store.addSection({ bars: 1 })

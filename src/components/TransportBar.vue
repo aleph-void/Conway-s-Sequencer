@@ -137,4 +137,29 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Keyboard shortcuts mean nothing to a finger. */
+@media (pointer: coarse) {
+  .hint {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .row > button {
+    flex: 1 1 auto;
+  }
+
+  .play {
+    min-width: 0;
+  }
+
+  .readout {
+    margin-left: auto;
+  }
+
+  .meta {
+    white-space: normal;
+  }
+}
 </style>
