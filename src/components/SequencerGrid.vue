@@ -64,6 +64,10 @@ function scrollToStart() {
   // edge, and `scrollHeight` lands there too in a browser that keeps the origin at the top.
   el.scrollLeft = 0
   el.scrollTop = orientation.value === 'btt' ? el.scrollHeight : 0
+  // Vertical tracks run down the page rather than inside the scroller (see App.vue), so
+  // bottom to top also has to bring the page down to the foot of the grid, where the
+  // headers and the first steps are. (jsdom has no scrollIntoView.)
+  if (orientation.value === 'btt') el.scrollIntoView?.({ block: 'end' })
 }
 
 watch(orientation, () => nextTick(scrollToStart))
@@ -573,6 +577,12 @@ function cellClass(
 .scroller {
   flex: 1 1 auto;
   min-height: 160px;
+  /*
+   * Horizontal tracks scroll inside the box, which fills the window. Vertical tracks run
+   * down the page instead: the shell grows with the song (see App.vue), so the box is as
+   * tall as the tracks and only ever scrolls sideways, across the channels. The sticky
+   * channel heads therefore hold only along the axis the box scrolls.
+   */
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -581,19 +591,6 @@ function cellClass(
   /* Fingers pan the grid (a tap toggles a cell); pinch-zoom inside it is disabled. */
   touch-action: pan-x pan-y;
   -webkit-tap-highlight-color: transparent;
-}
-
-/*
- * Where the page scrolls as a whole (tablets, phones and short windows; see App.vue) a
- * vertical grid would make the page as tall as the song, its sticky headers would scroll
- * away with it, and bottom to top would open on the end of the song. Cap the scroller so
- * the song scrolls inside it, headers in view, as it does on a desktop.
- */
-@media (max-width: 1199px), (max-height: 520px) {
-  .scroller.vertical {
-    max-height: 75vh;
-    max-height: 75dvh;
-  }
 }
 
 /* Right to left: rows are mirrored and the scroll origin moves to the right edge, by the headers. */
