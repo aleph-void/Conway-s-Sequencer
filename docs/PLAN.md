@@ -42,7 +42,8 @@ iteration was built against, with what shipped and what is left.
 src/
   core/            pure TypeScript, no Vue, 100 % unit-testable
     song.ts        types, factories, step arithmetic, invariants
-    timing.ts      tempo inheritance, step durations, section timeline, locate(time)
+    timing.ts      tempo inheritance, step durations, section timeline, locate(time), locateStep(step)
+    clipboard.ts   blocks of gates: read a rectangle of cells out of a song, write one back
     midi.ts        message builders, output→note mapping, note names
     compile.ts     Song → sorted MidiEvent[] (the "render" step)
     scheduler.ts   look-ahead scheduler: hands events to the port with timestamps
@@ -52,7 +53,8 @@ src/
   stores/          Pinia
     song.ts        the document + all edits + autosave + library (open/new/duplicate/delete)
     midi.ts        Web MIDI access, outputs, selection, send(), panic()
-    transport.ts   play/stop/position, wires compile + scheduler + midi
+    transport.ts   play/stop/position/seek, wires compile + scheduler + midi
+    editor.ts      the selected block and the clipboard (copy/cut/paste at the cursor/delete)
   components/      Vue SFCs, thin over the stores
     AppHeader, MidiPanel, TransportBar, SettingsPanel,
     SectionsPanel, EditorPanel (browser preferences: track orientation),

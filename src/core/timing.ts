@@ -132,6 +132,28 @@ export function locate(timeline: readonly SectionTiming[], timeSeconds: number):
   return null
 }
 
+/** Where a step on the whole-song step axis lies, or null when it is outside the song. */
+export function locateStep(timeline: readonly SectionTiming[], globalStep: number): Position | null {
+  if (!Number.isInteger(globalStep) || globalStep < 0) return null
+  for (const t of timeline) {
+    if (globalStep < t.startStep + t.stepCount) {
+      return { sectionIndex: t.index, stepInSection: globalStep - t.startStep, globalStep }
+    }
+  }
+  return null
+}
+
+/**
+ * Seconds from song start to the start of a step on the whole-song step axis. The step after
+ * the last one maps to the end of the song.
+ */
+export function stepStartTime(timeline: readonly SectionTiming[], globalStep: number): number {
+  const at = locateStep(timeline, globalStep)
+  if (!at) return globalStep < 0 ? 0 : totalDuration(timeline)
+  const t = timeline[at.sectionIndex]!
+  return t.startTime + at.stepInSection * t.stepDuration
+}
+
 export function formatDuration(seconds: number): string {
   const whole = Math.max(0, Math.floor(seconds))
   const m = Math.floor(whole / 60)

@@ -28,6 +28,35 @@ describe('useSongStore', () => {
     expect(store.duration).toBe(8)
   })
 
+  describe('blocks', () => {
+    it('copies, pastes and clears rectangles of cells and bumps the revision', () => {
+      const store = useSongStore()
+      const section = store.song.sections[0]!
+      const [c0, c1] = store.song.channels
+      store.setStep(section.id, c0!.id, 1, true)
+      store.setStep(section.id, c1!.id, 0, true)
+      const range = { channelStart: 0, channelEnd: 2, stepStart: 0, stepEnd: 2 }
+      const block = store.copyBlock(range)
+      expect(block).toEqual({ channels: 2, steps: 2, rows: [[1], [0]] })
+
+      const before = store.revision
+      expect(store.pasteBlock(block, 0, 8)).toEqual({ channelStart: 0, channelEnd: 2, stepStart: 8, stepEnd: 10 })
+      expect(store.revision).toBe(before + 1)
+      expect(section.steps[c0!.id]).toEqual([1, 9])
+      expect(section.steps[c1!.id]).toEqual([0, 8])
+
+      expect(store.clearBlock(range)).toEqual(range)
+      expect(store.revision).toBe(before + 2)
+      expect(section.steps[c0!.id]).toEqual([9])
+      expect(section.steps[c1!.id]).toEqual([8])
+
+      // Nothing to write leaves the revision alone.
+      expect(store.pasteBlock(block, 0, 64)).toBeNull()
+      expect(store.clearBlock({ channelStart: 9, channelEnd: 10, stepStart: 0, stepEnd: 1 })).toBeNull()
+      expect(store.revision).toBe(before + 2)
+    })
+  })
+
   describe('channels', () => {
     it('adds channels on the next free output up to 62', () => {
       const store = useSongStore()

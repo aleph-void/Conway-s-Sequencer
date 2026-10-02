@@ -106,6 +106,73 @@ test.describe('drawing gates', () => {
     await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'idle')
   })
 
+  test('selects a block across tracks, copies it and pastes it where the cursor is', async ({ midiPage: page }) => {
+    const cell = (c: number, s: number) => page.getByTestId(`cell-${c}-0-${s}`)
+    const checked = async (c: number, from: number, to: number) => {
+      const out: string[] = []
+      for (let s = from; s < to; s++) out.push((await cell(c, s).getAttribute('aria-checked')) ?? '')
+      return out.map((v) => (v === 'true' ? 'x' : '.')).join('')
+    }
+    // Two tracks: a kick-ish pattern on 1 and an off-beat on 2.
+    for (const s of [0, 2]) await cell(1, s).click()
+    await cell(2, 1).click()
+    await cell(2, 5).click() // outside the block to be copied
+
+    // Shift+drag from channel 1 step 0 to channel 2 step 3 selects the block and paints nothing.
+    const start = (await cell(1, 0).boundingBox())!
+    const end = (await cell(2, 3).boundingBox())!
+    await page.keyboard.down('Shift')
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 6 })
+    await page.mouse.up()
+    await page.keyboard.up('Shift')
+    await expect(page.getByTestId('selection-size')).toHaveText('2 tracks × 4 steps selected')
+    await expect(page.locator('.cell.selected')).toHaveCount(8)
+    expect(await checked(1, 0, 4)).toBe('x.x.')
+    expect(await checked(2, 0, 4)).toBe('.x..')
+
+    await page.keyboard.press('Control+c')
+    await expect(page.getByTestId('paste')).toBeVisible()
+
+    // Clicking the section header puts the cursor under the pointer: the start of bar 2 (step 16),
+    // which shows as the paused position in the transport.
+    const header = (await page.getByTestId('grid-section-0').boundingBox())!
+    const cellWidth = start.width
+    await page.getByTestId('grid-section-0').click({ position: { x: 16 * cellWidth + 3, y: header.height / 2 } })
+    await expect(page.getByTestId('position')).toHaveText('0:02')
+    await expect(page.getByTestId('section-readout')).toContainText('A · bar 2 · beat 1')
+    await expect(page.getByTestId('play')).toContainText('Resume')
+    await expect(cell(1, 16)).toHaveClass(/playhead/)
+
+    await page.keyboard.press('Control+v')
+    expect(await checked(1, 16, 20)).toBe('x.x.')
+    expect(await checked(2, 16, 20)).toBe('.x..')
+    // The pasted block is now the selection; the original and the cell outside it are untouched.
+    await expect(page.locator('.cell.selected')).toHaveCount(8)
+    await expect(cell(1, 16)).toHaveClass(/selected/)
+    expect(await checked(1, 0, 4)).toBe('x.x.')
+    await expect(cell(2, 5)).toHaveAttribute('aria-checked', 'true')
+
+    // A bar number works the same way; the Paste button pastes there too, over what the cells held.
+    await cell(1, 33).click()
+    await page.getByTestId('bar-label-2').click({ position: { x: 3, y: 5 } })
+    await expect(page.getByTestId('section-readout')).toContainText('A · bar 3 · beat 1')
+    await page.getByTestId('paste').click()
+    expect(await checked(1, 32, 36)).toBe('x.x.')
+    expect(await checked(2, 32, 36)).toBe('.x..')
+
+    // Delete clears the selected block, and the edit survives a reload.
+    await page.keyboard.press('Delete')
+    expect(await checked(1, 32, 36)).toBe('....')
+    expect(await checked(2, 32, 36)).toBe('....')
+    await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
+    await page.reload()
+    expect(await checked(1, 16, 20)).toBe('x.x.')
+    expect(await checked(2, 16, 20)).toBe('.x..')
+    expect(await checked(1, 32, 36)).toBe('....')
+  })
+
   test('autosaves every kind of edit, including settings and sections', async ({ midiPage: page }) => {
     const stored = () => storedSong(page)
     await page.getByTestId('song-name').fill('Everything')

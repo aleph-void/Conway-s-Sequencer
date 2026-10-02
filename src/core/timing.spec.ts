@@ -5,9 +5,11 @@ import {
   buildTimeline,
   formatDuration,
   locate,
+  locateStep,
   loopRangeSeconds,
   resolveTempos,
   stepDurationSeconds,
+  stepStartTime,
   totalBars,
   totalDuration,
   totalSteps,
@@ -104,6 +106,30 @@ describe('buildTimeline', () => {
     expect(locate(tl, 9)).toBeNull()
     expect(locate(tl, -1)).toBeNull()
     expect(locate([], 0)).toBeNull()
+  })
+
+  it('locates a step on the whole-song step axis', () => {
+    const tl = buildTimeline({ sections })
+    expect(locateStep(tl, 0)).toEqual({ sectionIndex: 0, stepInSection: 0, globalStep: 0 })
+    expect(locateStep(tl, 15)).toEqual({ sectionIndex: 0, stepInSection: 15, globalStep: 15 })
+    expect(locateStep(tl, 16)).toEqual({ sectionIndex: 1, stepInSection: 0, globalStep: 16 })
+    expect(locateStep(tl, 43)).toEqual({ sectionIndex: 2, stepInSection: 3, globalStep: 43 })
+    expect(locateStep(tl, 44)).toBeNull()
+    expect(locateStep(tl, -1)).toBeNull()
+    expect(locateStep(tl, 1.5)).toBeNull()
+    expect(locateStep([], 0)).toBeNull()
+  })
+
+  it('maps a step to its start time, and the step after the last one to the end', () => {
+    const tl = buildTimeline({ sections })
+    expect(stepStartTime(tl, 0)).toBe(0)
+    expect(stepStartTime(tl, 1)).toBe(0.125)
+    expect(stepStartTime(tl, 16)).toBe(2)
+    expect(stepStartTime(tl, 41)).toBe(6)
+    expect(stepStartTime(tl, 44)).toBe(9)
+    expect(stepStartTime(tl, 100)).toBe(9)
+    expect(stepStartTime(tl, -3)).toBe(0)
+    expect(stepStartTime([], 0)).toBe(0)
   })
 })
 
