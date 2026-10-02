@@ -39,6 +39,22 @@ describe('SequencerGrid', () => {
     expect(row(0).classes()).not.toContain('is-muted')
   })
 
+  it('gives each channel row its own track hue', () => {
+    const store = useSongStore()
+    for (let i = 0; i < 5; i++) store.addChannel()
+    const wrapper = mount(SequencerGrid)
+    const rows = wrapper.findAll('.channel-row')
+    expect(rows).toHaveLength(13)
+    const hue = (i: number) => (rows[i]!.element as HTMLElement).style.getPropertyValue('--track-hue')
+    const hues = rows.map((_, i) => hue(i))
+    hues.forEach((h) => expect(h).toMatch(/^\d+$/))
+    // Twelve distinct hues before the palette wraps; neighbours never share one.
+    expect(new Set(hues.slice(0, 12)).size).toBe(12)
+    expect(hue(12)).toBe(hue(0))
+    for (let i = 1; i < rows.length; i++) expect(hue(i)).not.toBe(hue(i - 1))
+    expect(wrapper.findAll('[data-testid="channel-swatch"]')).toHaveLength(13)
+  })
+
   it('toggles a cell on pointerdown and paints on pointerenter', async () => {
     const store = useSongStore()
     const wrapper = mount(SequencerGrid, { attachTo: document.body })
