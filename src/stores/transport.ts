@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { compileSong } from '../core/compile'
+import { compileSong, windowEvents } from '../core/compile'
 import { noteOff, noteOn } from '../core/midi'
 import { Scheduler } from '../core/scheduler'
+import type { LoopRange } from '../core/song'
 import { locate, type Position } from '../core/timing'
 import { useMidiStore } from './midi'
 import { useSongStore } from './song'
@@ -13,20 +14,32 @@ export interface TransportDeps {
   cancelFrame?: (handle: unknown) => void
 }
 
+function sameRange(a: LoopRange | null, b: LoopRange | null): boolean {
+  return a === b || (a !== null && b !== null && a.start === b.start && a.end === b.end)
+}
+
 /**
  * Transport states:
  *  - stopped: nothing runs and the cursor sits at the start.
  *  - playing: the scheduler runs and the play gate is high.
  *  - paused: nothing runs, the gate is low, but the cursor keeps its position so playback
  *    can resume from there.
+ *
+ * "The start" is the start of the song, or of the loop range when the song has loop points:
+ * playback then stays between them (the scheduler is fed just that window of the song) and
+ * the Loop setting decides whether it repeats or stops at the end of the range.
  */
 export const useTransportStore = defineStore('transport', () => {
   const songStore = useSongStore()
   const midi = useMidiStore()
 
+  /** Seconds from song start of the start of what plays: the loop range, or the whole song. */
+  const loopStart = computed(() => songStore.loopSeconds?.start ?? 0)
+
   const playing = ref(false)
   const paused = ref(false)
-  const positionSeconds = ref(0)
+  /** Cursor, in seconds from the start of the song (not of the loop range). */
+  const positionSeconds = ref(loopStart.value)
   const position = computed<Position | null>(() => locate(songStore.timeline, positionSeconds.value))
   /** Global step under the cursor while playing or paused, or -1 when stopped. */
   const currentStep = computed(() =>
@@ -60,8 +73,8 @@ export const useTransportStore = defineStore('transport', () => {
     now,
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
-    // The scheduler stops by itself when a non-looping song reaches its end.
-    onStop: () => halt(0),
+    // The scheduler stops by itself when a non-looping song (or loop range) reaches its end.
+    onStop: () => halt(loopStart.value),
   })
 
   let frame: unknown = null
@@ -72,9 +85,14 @@ export const useTransportStore = defineStore('transport', () => {
       ? (h) => cancelAnimationFrame(h as number)
       : (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
 
+  /** What the scheduler holds: the window of the song it plays, in seconds from song start. */
+  let loadedStart = 0
+  let loadedDuration = 0
+  let loadedRange: LoopRange | null = null
+
   function pump() {
     if (!scheduler.isRunning) return
-    positionSeconds.value = scheduler.position()
+    positionSeconds.value = loadedStart + scheduler.position()
     frame = raf(pump)
   }
 
@@ -83,34 +101,53 @@ export const useTransportStore = defineStore('transport', () => {
     frame = null
   }
 
+  /**
+   * Hand the song, or the window of it between the loop points, to the scheduler. While
+   * playing, an edit is picked up seamlessly; loop points that moved restart playback inside
+   * the new range instead, carrying on from the same place when the cursor is still inside it.
+   */
   function reload() {
     const compiled = compileSong(songStore.song)
-    scheduler.load(compiled.events, compiled.duration, songStore.song.settings.loop)
+    const range = songStore.loopSeconds
+    const nextRange = songStore.song.settings.loopRange
+    const moved = playing.value && !sameRange(loadedRange, nextRange)
+    const was = moved ? loadedStart + scheduler.position() : 0
+    loadedStart = range?.start ?? 0
+    loadedDuration = range ? range.end - range.start : compiled.duration
+    loadedRange = nextRange ? { ...nextRange } : null
+    const events = range ? windowEvents(compiled.events, range.start, range.end) : compiled.events
+    scheduler.load(events, loadedDuration, songStore.song.settings.loop)
+    if (moved && scheduler.isRunning) {
+      const from = was - loadedStart
+      scheduler.start(from > 0 && from < loadedDuration ? from : 0)
+      positionSeconds.value = loadedStart + scheduler.position()
+    }
   }
 
-  /** Stop the scheduler and the gate, leaving the cursor at `at` (stopped when 0, paused otherwise). */
+  /** Stop the scheduler and the gate, leaving the cursor at `at` (stopped at the start, paused past it). */
   function halt(at: number) {
     scheduler.stop(false)
     releaseGate()
     stopFrames()
     playing.value = false
     positionSeconds.value = at
-    paused.value = at > 0
+    paused.value = at > loopStart.value
   }
 
   /** Start playing from `fromSeconds`: the paused position by default, the start when stopped. */
   function play(fromSeconds = positionSeconds.value) {
     if (songStore.duration <= 0) return
     reload()
-    // A cursor past the end (the song shrank while paused) starts over.
-    const from = fromSeconds > 0 && fromSeconds < songStore.duration ? fromSeconds : 0
+    // A cursor outside what plays (the song shrank or the loop points moved while paused) starts over.
+    const offset = fromSeconds - loadedStart
+    const from = offset > 0 && offset < loadedDuration ? offset : 0
     // The gate goes high before the first step so the module sees "playing" first.
     raiseGate()
     scheduler.start(from)
     playing.value = scheduler.isRunning
     if (playing.value) {
       paused.value = false
-      positionSeconds.value = from
+      positionSeconds.value = loadedStart + from
       stopFrames()
       pump()
     } else {
@@ -121,7 +158,7 @@ export const useTransportStore = defineStore('transport', () => {
   /** Stop where the cursor is, so `resume()` carries on from the same step. */
   function pause() {
     if (!playing.value) return
-    halt(scheduler.position())
+    halt(loadedStart + scheduler.position())
   }
 
   /** Continue from the paused position (or start from the top when stopped). */
@@ -134,16 +171,16 @@ export const useTransportStore = defineStore('transport', () => {
   function reset() {
     if (playing.value) {
       scheduler.start(0)
-      positionSeconds.value = 0
+      positionSeconds.value = loadedStart
       return
     }
-    positionSeconds.value = 0
+    positionSeconds.value = loopStart.value
     paused.value = false
   }
 
   /** Stop and return the cursor to the start. */
   function stop() {
-    halt(0)
+    halt(loopStart.value)
   }
 
   /** Play/pause, the Space key behaviour. */
@@ -170,6 +207,11 @@ export const useTransportStore = defineStore('transport', () => {
     () => songStore.song.settings.loop,
     (loop) => scheduler.setLoop(loop),
   )
+
+  // A stopped cursor sits at the start of what plays, so it follows the loop points.
+  watch(loopStart, (start) => {
+    if (!playing.value && !paused.value) positionSeconds.value = start
+  })
 
   return { playing, paused, positionSeconds, position, currentStep, play, pause, resume, reset, stop, toggle, panic }
 })

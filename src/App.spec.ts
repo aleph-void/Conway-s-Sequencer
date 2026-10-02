@@ -40,6 +40,26 @@ describe('App', () => {
     expect(again.find('[data-testid="sections-table"]').exists()).toBe(true)
   })
 
+  it('shows the module view on request and remembers it', async () => {
+    localStorage.clear()
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    const toggle = wrapper.get('[data-testid="toggle-module-view"]')
+    expect(toggle.attributes('aria-pressed')).toBe('false')
+    expect(wrapper.find('[data-testid="module-view"]').exists()).toBe(false)
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-pressed')).toBe('true')
+    expect(wrapper.find('[data-testid="module-view"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid^="module-output-"]')).toHaveLength(64)
+    // The grid stays alongside it.
+    expect(wrapper.find('[data-testid="grid"]').exists()).toBe(true)
+
+    const again = mount(App, { global: { plugins: [createPinia()] } })
+    expect(again.find('[data-testid="module-view"]').exists()).toBe(true)
+    await again.get('[data-testid="toggle-module-view"]').trigger('click')
+    expect(again.find('[data-testid="module-view"]').exists()).toBe(false)
+  })
+
   it('renames the song from the header', async () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } })
     await wrapper.get('[data-testid="song-name"]').setValue('My Patch')

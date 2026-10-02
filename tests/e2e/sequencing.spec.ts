@@ -229,6 +229,53 @@ test.describe('playback', () => {
     await expect(page.getByTestId('section-readout')).toHaveText('—')
   })
 
+  test('loops between loop points set on the loop strip and remembers them', async ({ midiPage: page }) => {
+    await enableMidi(page)
+    // Gates at the start of bars 1, 2 and 3 (0 s, 2 s and 4 s).
+    await page.getByTestId('cell-0-0-0').click()
+    await page.getByTestId('cell-0-0-16').click()
+    await page.getByTestId('cell-0-0-32').click()
+
+    // Drag across bars 2 and 3 on the loop strip.
+    const from = (await page.getByTestId('loop-bar-1').boundingBox())!
+    const to = (await page.getByTestId('loop-bar-2').boundingBox())!
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 })
+    await page.mouse.up()
+    await expect(page.getByTestId('loop-range')).toContainText('bars 2–3 · 0:02–0:06')
+    await expect(page.getByTestId('loop-bar-1')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('loop-bar-2')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('loop-bar-0')).toHaveAttribute('aria-pressed', 'false')
+    // The cursor waits at the loop start, and the points survive a reload.
+    await expect(page.getByTestId('position')).toHaveText('0:02')
+    await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
+    await page.reload()
+    await expect(page.getByTestId('loop-range')).toContainText('bars 2–3')
+    await enableMidi(page)
+
+    await page.getByTestId('play').click()
+    await expect(page.getByTestId('section-readout')).toContainText('A · bar 2')
+    const gateOns = (log: MidiLogEntry[]) => log.filter((e) => e.data[0] === 0x90 && e.data[1] === 36)
+    // Bar 2's gate, bar 3's gate 2 s later, then bar 2's again after the wrap at 4 s.
+    await expect.poll(async () => gateOns(await midiLog(page)).length, { timeout: 8000 }).toBeGreaterThanOrEqual(3)
+    const log = await midiLog(page)
+    const gates = log.filter((e) => e.data[1] !== 98)
+    expect(gates[0]!.data).toEqual([0x90, 99, 100])
+    expect(gates[1]!.data).toEqual([0x90, 36, 100])
+    const ons = gateOns(log)
+    expect(ons[1]!.timestamp! - ons[0]!.timestamp!).toBeCloseTo(2000, -2)
+    expect(ons[2]!.timestamp! - ons[1]!.timestamp!).toBeCloseTo(2000, -2)
+    await expect(page.getByTestId('section-readout')).not.toContainText('bar 4')
+
+    await page.getByTestId('stop').click()
+    await expect(page.getByTestId('position')).toHaveText('0:02')
+    await page.getByTestId('loop-range-clear').click()
+    await expect(page.getByTestId('loop-range')).toHaveCount(0)
+    await expect(page.getByTestId('position')).toHaveText('0:00')
+    await expect(page.getByTestId('loop-bar-1')).toHaveAttribute('aria-pressed', 'false')
+  })
+
   test('solo plays only the soloed channels and marks the rest as muted', async ({ midiPage: page }) => {
     await enableMidi(page)
     await page.getByTestId('cell-0-0-0').click()

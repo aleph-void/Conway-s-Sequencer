@@ -10,6 +10,31 @@ test.describe('shell', () => {
     await expect(page.getByTestId('sections-table').locator('tbody tr')).toHaveCount(1)
   })
 
+  test('carries Open Graph and Twitter Card metadata for link previews', async ({ midiPage: page }) => {
+    const origin = 'https://conways-sequencer.alephvoid.com'
+    const meta = (selector: string) => page.locator(`meta[${selector}]`).getAttribute('content')
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${origin}/`)
+    expect(await meta('property="og:type"')).toBe('website')
+    expect(await meta('property="og:url"')).toBe(`${origin}/`)
+    expect(await meta('property="og:title"')).toBe("Conway's Sequencer")
+    expect(await meta('property="og:description"')).toMatch(/Conway's Game/)
+    expect(await meta('property="og:image"')).toBe(`${origin}/og-image.png`)
+    expect(await meta('property="og:image:width"')).toBe('1200')
+    expect(await meta('property="og:image:height"')).toBe('630')
+    expect(await meta('property="og:image:alt"')).toBeTruthy()
+    expect(await meta('name="twitter:card"')).toBe('summary_large_image')
+    expect(await meta('name="twitter:title"')).toBe("Conway's Sequencer")
+    expect(await meta('name="twitter:image"')).toBe(`${origin}/og-image.png`)
+    expect(await meta('name="twitter:image:alt"')).toBeTruthy()
+
+    // Scrapers fetch the card from the same path on whatever host serves the build.
+    const image = await page.request.get(new URL('/og-image.png', page.url()).toString())
+    expect(image.ok()).toBe(true)
+    expect(image.headers()['content-type']).toMatch(/^image\/png/)
+    expect((await image.body()).length).toBeGreaterThan(10_000)
+  })
+
   test('gives the grid most of the viewport and lets the settings drawer collapse', async ({ midiPage: page }) => {
     const viewport = page.viewportSize()!
     const gridPanel = page.getByTestId('grid-panel')
@@ -30,6 +55,53 @@ test.describe('shell', () => {
     await expect(page.getByTestId('settings-drawer')).toHaveCount(0)
     await page.getByTestId('toggle-settings').click()
     await expect(page.getByTestId('sections-table')).toBeVisible()
+  })
+
+  test('shows the module view with its outputs lighting up as the song plays', async ({ midiPage: page }) => {
+    await expect(page.getByTestId('module-view')).toHaveCount(0)
+    await page.getByTestId('toggle-module-view').click()
+    const view = page.getByTestId('module-view')
+    await expect(view).toBeVisible()
+    await expect(page.getByTestId('toggle-module-view')).toHaveAttribute('aria-pressed', 'true')
+    await expect(view.locator('[data-testid^="module-output-"]')).toHaveCount(64)
+    const output = (n: number) => page.getByTestId(`module-output-${n}`)
+    await expect(output(1)).toHaveAttribute('title', /Output 1 · note 36 \(C2\) · Out 1 · low/)
+    await expect(output(64)).toHaveAttribute('title', /Play gate · low/)
+    await expect(page.getByTestId('module-high')).toHaveText('none')
+    // The grid is still there to work on, and the view sits beside it rather than over it.
+    const grid = (await page.getByTestId('grid-panel').boundingBox())!
+    const panel = (await view.boundingBox())!
+    expect(panel.x).toBeGreaterThanOrEqual(grid.x + grid.width)
+    await expect(page.getByTestId('cell-0-0-0')).toBeVisible()
+
+    // A one-bar song with channel 1 high on every step: output 1 stays lit while playing.
+    const bars = page.getByTestId('sections-table').locator('tbody tr').first().getByTestId('section-bars')
+    await bars.fill('1')
+    await bars.press('Tab')
+    const first = (await page.getByTestId('cell-0-0-0').boundingBox())!
+    const last = (await page.getByTestId('cell-0-0-15').boundingBox())!
+    await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2, { steps: 16 })
+    await page.mouse.up()
+    await expect(page.getByTestId('cell-0-0-15')).toHaveAttribute('aria-checked', 'true')
+
+    await page.getByTestId('play').click()
+    await expect(output(64)).toHaveAttribute('data-high', 'true')
+    await expect(output(1)).toHaveAttribute('data-high', 'true')
+    await expect(output(2)).toHaveAttribute('data-high', 'false')
+    await expect(page.getByTestId('module-high')).toContainText(/^1, (63, )?64$/)
+
+    await page.getByTestId('stop').click()
+    await expect(output(64)).toHaveAttribute('data-high', 'false')
+    await expect(output(1)).toHaveAttribute('data-high', 'false')
+    await expect(page.getByTestId('module-high')).toHaveText('none')
+
+    // The choice survives a reload, and the view can be hidden again.
+    await page.reload()
+    await expect(page.getByTestId('module-view')).toBeVisible()
+    await page.getByTestId('toggle-module-view').click()
+    await expect(page.getByTestId('module-view')).toHaveCount(0)
   })
 
   test('toggles full screen from the toolbar', async ({ midiPage: page }) => {

@@ -244,6 +244,74 @@ describe('useSongStore', () => {
     })
   })
 
+  describe('loop points', () => {
+    it('sets, normalises and clears the loop points', () => {
+      const store = useSongStore()
+      expect(store.barTotal).toBe(4)
+      expect(store.loopSeconds).toBeNull()
+      const before = store.revision
+      store.setLoopRange(1, 3)
+      expect(store.song.settings.loopRange).toEqual({ start: 1, end: 3 })
+      expect(store.loopSeconds).toEqual({ start: 2, end: 6 })
+      expect(store.revision).toBe(before + 1)
+      // Reversed or oversized ranges are put right; an empty one clears the points.
+      store.setLoopRange(3, 1)
+      expect(store.song.settings.loopRange).toEqual({ start: 1, end: 3 })
+      store.setLoopRange(2, 99)
+      expect(store.song.settings.loopRange).toEqual({ start: 2, end: 4 })
+      store.setLoopRange(2, 2)
+      expect(store.song.settings.loopRange).toBeNull()
+      store.setLoopBar(3)
+      expect(store.song.settings.loopRange).toEqual({ start: 3, end: 4 })
+      const revision = store.revision
+      store.clearLoopRange()
+      expect(store.song.settings.loopRange).toBeNull()
+      expect(store.revision).toBe(revision + 1)
+      store.clearLoopRange() // nothing to clear: not an edit
+      expect(store.revision).toBe(revision + 1)
+    })
+
+    it('extends the loop points to cover another bar', () => {
+      const store = useSongStore()
+      store.extendLoopRange(2) // nothing set yet: just that bar
+      expect(store.song.settings.loopRange).toEqual({ start: 2, end: 3 })
+      store.extendLoopRange(0)
+      expect(store.song.settings.loopRange).toEqual({ start: 0, end: 3 })
+      store.extendLoopRange(3)
+      expect(store.song.settings.loopRange).toEqual({ start: 0, end: 4 })
+      store.extendLoopRange(1) // already inside: unchanged
+      expect(store.song.settings.loopRange).toEqual({ start: 0, end: 4 })
+    })
+
+    it('normalises loop points set through updateSettings', () => {
+      const store = useSongStore()
+      store.updateSettings({ loopRange: { start: 3, end: 10 } })
+      expect(store.song.settings.loopRange).toEqual({ start: 3, end: 4 })
+      store.updateSettings({ loopRange: null })
+      expect(store.song.settings.loopRange).toBeNull()
+    })
+
+    it('keeps the loop points inside the song when it loses bars', () => {
+      const store = useSongStore()
+      const second = store.addSection({ bars: 2 })
+      expect(store.barTotal).toBe(6)
+      store.setLoopRange(3, 6)
+      store.updateSection(second.id, { bars: 1 })
+      expect(store.song.settings.loopRange).toEqual({ start: 3, end: 5 })
+      store.removeSection(second.id)
+      expect(store.song.settings.loopRange).toEqual({ start: 3, end: 4 })
+      store.updateSection(store.song.sections[0]!.id, { bars: 2 })
+      expect(store.song.settings.loopRange).toBeNull()
+    })
+
+    it('counts bars across sections for the loop points', () => {
+      const store = useSongStore()
+      store.addSection({ bars: 2, tempo: 60 }) // 4 s per bar
+      store.setLoopRange(4, 6)
+      expect(store.loopSeconds).toEqual({ start: 8, end: 16 })
+    })
+  })
+
   describe('library', () => {
     it('lists the open song as the only entry on a first visit', () => {
       const store = useSongStore()

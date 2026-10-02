@@ -14,11 +14,13 @@ iteration was built against, with what shipped and what is left.
 | x16 clock | `CLOCK_NOTE = 98` is pulsed `CLOCK_PULSES_PER_BEAT = 16` times per beat while playing, compiled into the event list alongside the gates so it follows every section's tempo and time signature. Half-period pulses, never below the 2 ms retrigger gap. Independent of the base note; mute and solo do not affect it. |
 | Play gate | `settings.playGateNote` (default `DEFAULT_PLAY_GATE_NOTE = 99`, the module's 64th output) goes note-on when playback starts or resumes and note-off when it pauses or stops (manual stop, end of a non-looping song, or panic). Independent of the base note. |
 | Transport | `stores/transport.ts` has three states: stopped (cursor at 0), playing, paused (cursor kept, gate low). Pause stops the scheduler where it is; resume restarts it from the cursor and re-raises any gate that spans the resume point; reset returns the cursor to 0 and keeps playing if it was playing. |
+| Loop points | `settings.loopRange` is a range of bars on the whole-song bar axis (`{ start, end }`, end exclusive, null for the whole song), saved with the song and clamped whenever the song loses bars. The transport feeds the scheduler just that window of the compiled song (`windowEvents` in `core/compile.ts` cuts the event list and re-raises/releases gates at the edges), so the scheduler itself knows nothing about loop points; "the start" becomes the range start and the Loop setting decides whether the range repeats. The grid's loop strip (one cell per bar: click, drag, Shift to extend, keyboard, tap) edits it. |
 | Channel = binary on/off of a MIDI note → gate | Note-on at the start of an on-step, note-off at the next off-step: a gate is held for the whole step, and consecutive on-steps form one long gate. |
 | Sections with tempo, time signature, bars | `Section { tempo: number \| null, timeSignature {beats, unit}, bars, subdivision }`. `tempo: null` inherits from the previous section (first section falls back to 120). |
 | Draw "on" bars like a piano roll | Grid: rows = channels, columns = every step of every section. Click toggles, drag paints, keyboard toggles. |
 | Comprehensive tests, GitHub Actions → GitHub Pages | Vitest unit/component tests with coverage thresholds, Playwright e2e against the built app with a fake Web MIDI, one workflow that tests then deploys. |
 | Editor-first layout | The shell is viewport-sized. A one-line toolbar holds the MIDI output picker and transport; sections, module settings and song I/O sit in a collapsible drawer (`stores/ui.ts`, persisted). The gate grid flexes to fill the remaining height. |
+| Module view | `core/module.ts` models the panel: 64 outputs in an 8x8 field following consecutive notes from the base note (`moduleLayout` maps channels, the clock and the play gate onto them; `highNotes` says which notes are high at a playback position, pulse width and 2 ms gate gap included, derived from the song rather than from the bytes sent so it works without a MIDI output). `components/ModuleView.vue` renders it beside the grid (above it below 1000px); shown from the toolbar, persisted in `stores/ui.ts`. |
 | Tablets and phones | Below 1200px wide (or 520px tall) the shell scrolls as a page instead of being viewport-sized (`App.vue`). Below 768px (`style.css`, `App.vue`) phones get the toolbar and drawer stacked, a 164px channel column whose controls wrap onto two lines, and the drawer closed by default. `(pointer: coarse)` widens steps, heightens rows and gives 36px controls. In the grid a touch tap toggles on click and a swipe pans (`touch-action: pan-x pan-y`); mouse and pen still paint from pointerdown. |
 | alephvoid.com branding | Aleph Void logo mark (from the alephvoid.com repo) in the header and footer, page title, favicon; the site's near-black palette with the violet accent (`#6d28d9` / `#8b5cf6`), Inter for UI text and JetBrains Mono for labels. Tokens live in `src/style.css`. |
 
@@ -43,6 +45,7 @@ src/
     midi.ts        message builders, output→note mapping, note names
     compile.ts     Song → sorted MidiEvent[] (the "render" step)
     scheduler.ts   look-ahead scheduler: hands events to the port with timestamps
+    module.ts      the module's panel: output layout and which notes are high at a position
     serialization.ts  JSON export/import with validation + clamping
     library.ts     the song library in localStorage: index + one key per song
   stores/          Pinia
@@ -53,7 +56,8 @@ src/
     AppHeader, MidiPanel, TransportBar, SettingsPanel,
     SectionsPanel, SequencerGrid (+ ChannelHeader), SongIO,
     SongBrowser (slide-out drawer listing the saved songs),
-    ConfirmDialog (modal confirmation box, used before deleting a song)
+    ConfirmDialog (modal confirmation box, used before deleting a song),
+    ModuleView (live picture of the module's 64 outputs)
 tests/e2e/         Playwright specs + fake Web MIDI fixture
 ```
 

@@ -62,6 +62,16 @@ export interface Channel {
   solo: boolean
 }
 
+/**
+ * Loop points: a range of bars, counted across the whole song, that playback stays inside.
+ * `start` is the first bar of the range and `end` the bar after its last one (so a range
+ * covering bars 5 to 8 as shown in the GUI is `{ start: 4, end: 8 }`).
+ */
+export interface LoopRange {
+  start: number
+  end: number
+}
+
 export interface SongSettings {
   /** MIDI channel 1..16. */
   midiChannel: number
@@ -71,7 +81,10 @@ export interface SongSettings {
   velocity: number
   /** MIDI note held on while the song is playing (0..127). */
   playGateNote: number
+  /** Whether playback repeats (the loop range when one is set, otherwise the whole song). */
   loop: boolean
+  /** Loop points, or null to play the whole song. */
+  loopRange: LoopRange | null
 }
 
 export interface Song {
@@ -91,7 +104,14 @@ export function generateId(prefix = 'id'): string {
 }
 
 export function defaultSettings(): SongSettings {
-  return { midiChannel: 1, baseNote: DEFAULT_BASE_NOTE, velocity: 100, playGateNote: DEFAULT_PLAY_GATE_NOTE, loop: true }
+  return {
+    midiChannel: 1,
+    baseNote: DEFAULT_BASE_NOTE,
+    velocity: 100,
+    playGateNote: DEFAULT_PLAY_GATE_NOTE,
+    loop: true,
+    loopRange: null,
+  }
 }
 
 export function createChannel(output: number, overrides: Partial<Channel> = {}): Channel {
@@ -131,6 +151,27 @@ export function stepsPerBar(section: Pick<Section, 'timeSignature' | 'subdivisio
 
 export function stepCount(section: Pick<Section, 'timeSignature' | 'subdivision' | 'bars'>): number {
   return stepsPerBar(section) * section.bars
+}
+
+/** Bars in the whole song: the bar axis the loop points are counted on. */
+export function totalBars(sections: readonly Pick<Section, 'bars'>[]): number {
+  return sections.reduce((sum, s) => sum + s.bars, 0)
+}
+
+/**
+ * Bring a loop range into the song: whole bars, `start` before `end`, both inside the song.
+ * A reversed range is turned the right way round; one that does not cover at least one bar
+ * once clamped, or whose numbers make no sense, becomes null (play the whole song).
+ */
+export function normalizeLoopRange(range: unknown, bars: number): LoopRange | null {
+  if (typeof range !== 'object' || range === null) return null
+  const { start, end } = range as { start?: unknown; end?: unknown }
+  if (typeof start !== 'number' || typeof end !== 'number' || !Number.isFinite(start) || !Number.isFinite(end)) {
+    return null
+  }
+  const lo = clamp(Math.round(Math.min(start, end)), 0, bars)
+  const hi = clamp(Math.round(Math.max(start, end)), 0, bars)
+  return hi > lo ? { start: lo, end: hi } : null
 }
 
 export function isStepOn(section: Section, channelId: string, step: number): boolean {

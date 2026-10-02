@@ -25,6 +25,8 @@ const sections = computed(() =>
     const section = store.song.sections[timing.index]!
     const bars = Array.from({ length: section.bars }, (_, bar) => ({
       bar,
+      /** Index on the whole-song bar axis, which the loop points are counted on. */
+      globalBar: timing.startBar + bar,
       startStep: bar * timing.stepsPerBar,
       stepsPerBar: timing.stepsPerBar,
     }))
@@ -33,6 +35,57 @@ const sections = computed(() =>
 )
 
 const currentStep = computed(() => transport.currentStep)
+
+// ---- loop points ----------------------------------------------------------
+const loopRange = computed(() => store.song.settings.loopRange)
+
+function inLoop(globalBar: number): boolean {
+  const range = loopRange.value
+  return range !== null && globalBar >= range.start && globalBar < range.end
+}
+
+/**
+ * Loop-strip drag state: a mouse or pen press on a bar loops that bar and dragging across
+ * other bars stretches the range between the press and the pointer. Shift extends the
+ * existing range instead. A finger taps one bar (a drag has to scroll the grid).
+ */
+const selecting = ref(false)
+let anchorBar = 0
+
+function loopBegin(globalBar: number, event: PointerEvent) {
+  lastPointerType = event.pointerType || 'mouse'
+  if (lastPointerType === 'touch' || event.button !== 0) return
+  event.preventDefault()
+  selecting.value = true
+  if (event.shiftKey) {
+    store.extendLoopRange(globalBar)
+    const range = loopRange.value!
+    anchorBar = globalBar === range.start ? range.end - 1 : range.start
+  } else {
+    anchorBar = globalBar
+    store.setLoopBar(globalBar)
+  }
+}
+
+function loopEnter(globalBar: number, event: PointerEvent) {
+  if (!selecting.value || (event.buttons & 1) === 0) return
+  store.setLoopRange(Math.min(anchorBar, globalBar), Math.max(anchorBar, globalBar) + 1)
+}
+
+function loopTap(globalBar: number) {
+  if (lastPointerType !== 'touch') return
+  store.setLoopBar(globalBar)
+}
+
+function loopKey(globalBar: number, event: KeyboardEvent) {
+  if (event.shiftKey) store.extendLoopRange(globalBar)
+  else store.setLoopBar(globalBar)
+}
+
+function loopLabel(sectionName: string, bar: number, globalBar: number): string {
+  const state = inLoop(globalBar) ? 'in the loop' : 'not in the loop'
+  return `Loop ${sectionName} bar ${bar + 1} (${state}); Shift extends the loop to it`
+}
 
 function begin(sectionId: string, channelId: string, step: number, event: PointerEvent) {
   lastPointerType = event.pointerType || 'mouse'
@@ -62,6 +115,7 @@ function keyToggle(sectionId: string, channelId: string, step: number) {
 
 function end() {
   painting.value = false
+  selecting.value = false
 }
 
 onMounted(() => window.addEventListener('pointerup', end))
@@ -132,10 +186,52 @@ function cellClass(
             v-for="bar in bars"
             :key="bar.bar"
             class="bar-label mono"
+            :class="{ 'in-loop': inLoop(bar.globalBar) }"
             :style="{ width: `calc(var(--cell-size) * ${bar.stepsPerBar})` }"
           >
             {{ bar.bar + 1 }}
           </div>
+        </template>
+      </div>
+      <div class="header-row loop-row" data-testid="loop-strip">
+        <div class="corner loop-corner">
+          <span class="loop-title">Loop</span>
+          <button
+            v-if="loopRange"
+            class="loop-clear"
+            type="button"
+            title="Clear the loop points and play the whole song"
+            aria-label="Clear the loop points"
+            data-testid="loop-clear"
+            @click="store.clearLoopRange()"
+          >
+            ✕
+          </button>
+          <span v-else class="loop-hint muted">click or drag a bar</span>
+        </div>
+        <template v-for="{ section, bars } in sections" :key="section.id">
+          <div
+            v-for="bar in bars"
+            :key="bar.bar"
+            class="loop-cell"
+            :class="{
+              'in-loop': inLoop(bar.globalBar),
+              'loop-start': loopRange?.start === bar.globalBar,
+              'loop-end': loopRange?.end === bar.globalBar + 1,
+            }"
+            :style="{ width: `calc(var(--cell-size) * ${bar.stepsPerBar})` }"
+            role="button"
+            tabindex="0"
+            :aria-pressed="inLoop(bar.globalBar)"
+            :aria-label="loopLabel(section.name, bar.bar, bar.globalBar)"
+            :title="`Loop ${section.name} bar ${bar.bar + 1}: click for this bar, drag across bars, Shift+click to extend`"
+            :data-testid="`loop-bar-${bar.globalBar}`"
+            @pointerdown="loopBegin(bar.globalBar, $event)"
+            @pointerenter="loopEnter(bar.globalBar, $event)"
+            @click="loopTap(bar.globalBar)"
+            @keydown.enter.prevent="loopKey(bar.globalBar, $event)"
+            @keydown.space.prevent="loopKey(bar.globalBar, $event)"
+          />
         </template>
       </div>
 
@@ -259,7 +355,100 @@ function cellClass(
 
 .bars-row {
   top: 32px;
+}
+
+/* The loop strip sits under the bar numbers: one clickable cell per bar, lit inside the loop points. */
+.loop-row {
+  top: 50px;
+  height: var(--loop-row-height);
   border-bottom: 1px solid var(--border);
+  --loop-row-height: 14px;
+}
+
+.loop-corner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: var(--loop-row-height);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.loop-title {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.loop-hint {
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loop-clear {
+  min-height: 0;
+  height: 12px;
+  padding: 0 5px;
+  font-size: 9px;
+  line-height: 1;
+  border-radius: 3px;
+}
+
+.loop-cell {
+  flex: 0 0 auto;
+  height: var(--loop-row-height);
+  background: var(--bg-elev);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid transparent;
+  cursor: pointer;
+}
+
+.loop-cell.in-loop {
+  background: var(--accent);
+  border-left-color: var(--accent-dim);
+}
+
+.loop-cell.loop-start {
+  border-left: 2px solid var(--accent-bright);
+}
+
+.loop-cell.loop-end {
+  border-right: 2px solid var(--accent-bright);
+}
+
+@media (hover: hover) {
+  .loop-cell:hover {
+    background: var(--accent-soft);
+  }
+
+  .loop-cell.in-loop:hover {
+    background: var(--accent-hover);
+  }
+}
+
+.loop-cell:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: -2px;
+}
+
+/* Bar numbers inside the loop points pick up the accent too. */
+.bar-label.in-loop {
+  color: var(--accent-bright);
+}
+
+/* A finger needs a taller strip to hit. */
+@media (pointer: coarse) {
+  .loop-row {
+    --loop-row-height: 22px;
+  }
+
+  .loop-clear {
+    height: 18px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
 }
 
 .corner,

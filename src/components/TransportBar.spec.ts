@@ -123,4 +123,22 @@ describe('TransportBar', () => {
     const wrapper = mount(TransportBar)
     expect(wrapper.get('[data-testid="play"]').attributes('disabled')).toBeDefined()
   })
+
+  it('shows the loop points and clears them', async () => {
+    const wrapper = mount(TransportBar)
+    const song = useSongStore()
+    expect(wrapper.find('[data-testid="loop-range"]').exists()).toBe(false)
+    song.setLoopRange(1, 3)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="loop-range"]').text()).toContain('loop bars 2–3 · 0:02–0:06')
+    // The stopped cursor sits at the loop start.
+    expect(wrapper.get('[data-testid="position"]').text()).toBe('0:02')
+    song.setLoopBar(3)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="loop-range"]').text()).toContain('bar 4 · 0:06–0:08')
+    await wrapper.get('[data-testid="loop-range-clear"]').trigger('click')
+    expect(song.song.settings.loopRange).toBeNull()
+    expect(wrapper.find('[data-testid="loop-range"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="position"]').text()).toBe('0:00')
+  })
 })
