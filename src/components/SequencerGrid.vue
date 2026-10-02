@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { trackHue } from '../core/colors'
 import { MAX_CHANNELS, isChannelSilenced, isStepOn } from '../core/song'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
@@ -129,6 +130,7 @@ function cellClass(
         :key="channel.id"
         class="channel-row"
         :class="{ 'is-muted': isChannelSilenced(channel, store.song.channels) }"
+        :style="{ '--track-hue': trackHue(channelIndex) }"
         :data-testid="`channel-row-${channelIndex}`"
       >
         <div class="row-head">
@@ -242,6 +244,11 @@ function cellClass(
   z-index: 4;
 }
 
+/* Full row height, so gates scrolled underneath the sticky header never peek out below it. */
+.row-head {
+  height: var(--row-height);
+}
+
 .section-label {
   height: 32px;
   padding: 2px 8px;
@@ -274,10 +281,17 @@ function cellClass(
 .channel-row {
   height: var(--row-height);
   border-bottom: 1px solid var(--cell-line);
+  /*
+   * Each row carries its own hue (set inline from the track palette) and derives the
+   * colours of its gates from it, so one track's gates never look like the next one's.
+   */
+  --track-color: oklch(var(--track-l) var(--track-c) var(--track-hue));
+  --track-color-bright: oklch(var(--track-l-bright) var(--track-c-bright) var(--track-hue));
+  --track-color-dim: oklch(var(--track-l-dim) var(--track-c-dim) var(--track-hue));
 }
 
 .channel-row.is-muted .cell.on {
-  background: var(--accent-dim);
+  background: var(--track-color-dim);
   opacity: 0.55;
 }
 
@@ -302,7 +316,7 @@ function cellClass(
 .cell.on {
   --edge-left: 1px;
   --edge-right: 1px;
-  background: var(--cell-on);
+  background: var(--track-color);
   /* Dark outline around the gate; the left/right edges are dropped where a run continues. */
   box-shadow:
     inset 0 1px 0 0 var(--cell-on-edge),
@@ -336,7 +350,7 @@ function cellClass(
 }
 
 .cell.playhead.on {
-  background-color: var(--cell-on-playhead);
+  background-color: var(--track-color-bright);
 }
 
 .cell:focus-visible {

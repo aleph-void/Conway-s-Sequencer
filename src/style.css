@@ -40,10 +40,21 @@
   --cell: #12121a;
   --cell-alt: #16161f;
   --cell-line: #0a0a0f;
-  --cell-on: var(--accent-light);
   --cell-on-edge: rgba(0, 0, 0, 0.35);
-  --cell-on-playhead: var(--accent-bright);
   --playhead: var(--accent-glow);
+  /*
+   * Track colours. Each channel row sets its own --track-hue (see core/colors.ts) and the
+   * grid builds its gate colours as oklch(L C hue) from these, so every track is a different
+   * hue at the same perceived brightness: lit gates, the brighter gate under the playhead,
+   * and the dimmer gates of a muted track. The default hue is the brand violet.
+   */
+  --track-hue: 295;
+  --track-l: 70%;
+  --track-c: 0.17;
+  --track-l-bright: 82%;
+  --track-c-bright: 0.14;
+  --track-l-dim: 52%;
+  --track-c-dim: 0.11;
   /* Step width; rows are taller than they are wide so a track is an easy pointer target. */
   --cell-size: 22px;
   --row-height: 36px;

@@ -29,6 +29,10 @@ backend, and songs autosave to local storage.
   press ↑/↓), and duplicate one, notes included, with ⧉.
 - **Draw gates** by clicking or click-dragging across the grid; Enter/Space
   toggles the focused cell for keyboard users.
+- **A colour per track.** Every channel row draws its gates, and the swatch beside
+  its name, in its own hue, so neighbouring tracks are easy to tell apart at a
+  glance. Colours follow row position: twelve well-separated hues, then the
+  palette repeats.
 - **Gates follow the grid.** A gate goes high for the whole of every step it is
   drawn on, and consecutive on-steps hold it high as one long gate until the
   next empty step. The grid draws such a run as one continuous bar.

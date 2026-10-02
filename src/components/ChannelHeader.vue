@@ -24,6 +24,7 @@ function remove() {
 
 <template>
   <div class="channel-header" :class="{ muted: silenced }" :data-testid="`channel-header-${index}`">
+    <span class="swatch" aria-hidden="true" data-testid="channel-swatch" />
     <input
       class="name"
       type="text"
@@ -84,6 +85,20 @@ function remove() {
 .channel-header.muted .name {
   opacity: 0.5;
   text-decoration: line-through;
+}
+
+/* The track's colour, inherited from the grid row, so the header matches its gates. */
+.swatch {
+  flex: 0 0 4px;
+  width: 4px;
+  height: 26px;
+  border-radius: 2px;
+  background: var(--track-color, oklch(var(--track-l) var(--track-c) var(--track-hue)));
+}
+
+.channel-header.muted .swatch {
+  background: var(--track-color-dim, oklch(var(--track-l-dim) var(--track-c-dim) var(--track-hue)));
+  opacity: 0.55;
 }
 
 .name {
