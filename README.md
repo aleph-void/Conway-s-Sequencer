@@ -47,6 +47,14 @@ backend, and songs autosave to local storage.
   load it and work on it (the choice is remembered across reloads), start a new
   song, or delete one. "New" and "Import JSON" add a song to the browser rather
   than replacing the one you have open.
+- **Module view.** A "Module" button in the toolbar shows a picture of the
+  Conway's Game panel beside the grid: its 64 outputs in the module's 8x8
+  layout, each ringed in the colour of the track assigned to it, with the x16
+  clock and the play gate marked. While the song plays, every output that is
+  high right now lights up, following the cursor frame by frame, so you can
+  check what the module is being sent while you work on the song. It works
+  without a MIDI output selected (and says so), flags a base note that pushes
+  the clock or play gate off the panel, and is remembered across reloads.
 - **Transport.** Play, pause where the cursor is, resume from there, reset the
   cursor to the start (playback keeps going if it was running), stop, loop and
   panic. Space = play/pause, Esc = panic.

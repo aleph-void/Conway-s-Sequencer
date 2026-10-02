@@ -76,10 +76,9 @@ export function compileSong(song: Song): CompiledSong {
  * MIN_GAP_SECONDS and always off before the next pulse starts.
  */
 function pushClock(events: MidiEvent[], timing: SectionTiming, section: Section, midiChannel: number, velocity: number) {
-  const beatDuration = timing.stepDuration * section.subdivision
   const beats = section.timeSignature.beats * section.bars
-  const period = beatDuration / CLOCK_PULSES_PER_BEAT
-  const width = Math.max(MIN_GAP_SECONDS, Math.min(period / 2, period - MIN_GAP_SECONDS))
+  const period = clockPeriod(timing, section)
+  const width = clockPulseWidth(period)
   const on = noteOn(midiChannel, CLOCK_NOTE, velocity)
   const off = noteOff(midiChannel, CLOCK_NOTE)
   for (let pulse = 0; pulse < beats * CLOCK_PULSES_PER_BEAT; pulse++) {
@@ -87,6 +86,16 @@ function pushClock(events: MidiEvent[], timing: SectionTiming, section: Section,
     events.push({ time: start, kind: 'on', note: CLOCK_NOTE, channelId: CLOCK_CHANNEL_ID, data: on })
     events.push({ time: start + width, kind: 'off', note: CLOCK_NOTE, channelId: CLOCK_CHANNEL_ID, data: off })
   }
+}
+
+/** Seconds from one clock pulse to the next in a section: a beat split CLOCK_PULSES_PER_BEAT ways. */
+export function clockPeriod(timing: Pick<SectionTiming, 'stepDuration'>, section: Pick<Section, 'subdivision'>): number {
+  return (timing.stepDuration * section.subdivision) / CLOCK_PULSES_PER_BEAT
+}
+
+/** How long a clock pulse of the given period stays high (see `pushClock`). */
+export function clockPulseWidth(period: number): number {
+  return Math.max(MIN_GAP_SECONDS, Math.min(period / 2, period - MIN_GAP_SECONDS))
 }
 
 function rank(e: MidiEvent): number {

@@ -30,6 +30,15 @@ test.describe('phone layout', () => {
     // The choice is remembered across reloads, as on desktop.
     await page.reload()
     await expect(page.getByTestId('settings-drawer')).toBeVisible()
+
+    // The module view stacks above the grid at full width without widening the page either.
+    await page.getByTestId('toggle-module-view').tap()
+    await expect(page.getByTestId('module-view')).toBeVisible()
+    await expect(page.getByTestId('module-output-64')).toBeVisible()
+    await pageWidthFits(page)
+    const view = (await page.getByTestId('module-view').boundingBox())!
+    const grid = (await page.getByTestId('grid-panel').boundingBox())!
+    expect(view.y + view.height).toBeLessThanOrEqual(grid.y)
   })
 
   test('draws a gate with a tap and scrolls the grid with a swipe', async ({ midiPage: page }) => {

@@ -5,6 +5,7 @@ import TransportBar from './components/TransportBar.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import SectionsPanel from './components/SectionsPanel.vue'
 import SequencerGrid from './components/SequencerGrid.vue'
+import ModuleView from './components/ModuleView.vue'
 import SongIO from './components/SongIO.vue'
 import SongBrowser from './components/SongBrowser.vue'
 import BrandLogo from './components/BrandLogo.vue'
@@ -39,6 +40,17 @@ const year = new Date().getFullYear()
             Settings
           </button>
           <button
+            :class="{ active: ui.moduleViewOpen }"
+            :aria-pressed="ui.moduleViewOpen"
+            aria-controls="module-view"
+            :title="ui.moduleViewOpen ? 'Hide the module view' : 'Show the module\'s outputs and which are high'"
+            data-testid="toggle-module-view"
+            @click="ui.toggleModuleView()"
+          >
+            <span class="glyph" aria-hidden="true">▦</span>
+            Module
+          </button>
+          <button
             v-if="fullscreen.supported"
             :class="{ active: fullscreen.active.value }"
             :aria-pressed="fullscreen.active.value"
@@ -58,7 +70,10 @@ const year = new Date().getFullYear()
           <SongIO />
         </div>
       </div>
-      <SequencerGrid />
+      <div class="workspace">
+        <SequencerGrid />
+        <ModuleView v-if="ui.moduleViewOpen" />
+      </div>
     </main>
     <footer class="footer">
       <a class="footer-brand" href="https://alephvoid.com" target="_blank" rel="noopener">
@@ -165,6 +180,31 @@ button.active .glyph {
 /* Grid items default to min-width:auto, which would let the sections table widen the page. */
 .drawer > * {
   min-width: 0;
+}
+
+/* The gate grid, with the module view beside it when shown. */
+.workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+
+/* The grid scrolls inside its panel; without this it would widen the row instead. */
+.workspace > * {
+  min-width: 0;
+}
+
+@media (max-width: 999px) {
+  .workspace {
+    flex-direction: column;
+  }
+
+  /* On a narrow screen the module view goes above the grid, where it stays on screen. */
+  .workspace > :last-child:not(:first-child) {
+    order: -1;
+    flex: 0 0 auto;
+  }
 }
 
 .drawer-side {
