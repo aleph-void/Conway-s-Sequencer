@@ -11,6 +11,7 @@ import {
   type LibraryEntry,
   type LibraryIndex,
 } from '../core/library'
+import { deleteBars as takeBars, insertBars as putBars, readBars, type BarClip, type BarRange } from '../core/bars'
 import { clearRange, readBlock, writeBlock, type Block, type CellRange } from '../core/clipboard'
 import { normalizeSong, parseSong, serializeSong } from '../core/serialization'
 import {
@@ -259,6 +260,44 @@ export const useSongStore = defineStore('song', () => {
     const cleared = clearRange(song.value, timeline.value, range)
     if (cleared) touch()
     return cleared
+  }
+
+  // ---- bars (loop points, clipboard) -------------------------------------
+  /** Lift the bars inside a range of the whole-song bar axis out of the song; see `core/bars.ts`. */
+  function copyBars(range: BarRange): BarClip | null {
+    return readBars(song.value, range)
+  }
+
+  /**
+   * Take the bars inside a range out of the song, moving the later ones up. Loop points
+   * that lay after them move up too; points that covered any of them are cleared (what
+   * they pointed at is gone). Returns the range taken out, null for none.
+   */
+  function deleteBars(range: BarRange): BarRange | null {
+    const removed = takeBars(song.value, range)
+    if (!removed) return null
+    const loop = song.value.settings.loopRange
+    if (loop) {
+      const gone = removed.end - removed.start
+      if (loop.start >= removed.end) song.value.settings.loopRange = { start: loop.start - gone, end: loop.end - gone }
+      else if (loop.end > removed.start) song.value.settings.loopRange = null
+    }
+    clampLoopRange()
+    touch()
+    return removed
+  }
+
+  /**
+   * Put a run of bars into the song so that the first becomes bar `atBar`, pushing the
+   * later ones along, and set the loop points to them so where they landed is visible.
+   * Returns the range they occupy, null for none.
+   */
+  function insertBars(clip: BarClip, atBar: number): BarRange | null {
+    const inserted = putBars(song.value, clip, atBar)
+    if (!inserted) return null
+    song.value.settings.loopRange = normalizeLoopRange(inserted, barTotal.value)
+    touch()
+    return inserted
   }
 
   // ---- settings / whole-song --------------------------------------------
@@ -530,6 +569,9 @@ export const useSongStore = defineStore('song', () => {
     copyBlock,
     pasteBlock,
     clearBlock,
+    copyBars,
+    deleteBars,
+    insertBars,
     updateSettings,
     setLoopRange,
     setLoopBar,

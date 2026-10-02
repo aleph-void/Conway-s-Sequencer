@@ -192,20 +192,60 @@ const pasteTitle = computed(() => {
   return `Paste the copied block (${block.channels} × ${block.steps}) at the cursor: ${cursorLabel.value} (Ctrl+V)`
 })
 
-/** Keyboard shortcuts for the block, anywhere outside a text field: Ctrl/Cmd+C, X, V and Delete. */
+// ---- bars ---------------------------------------------------------------------
+/**
+ * The bars between the loop points are the selected bars. Unlike a block, which is painted
+ * over cells, they are taken out of the song (it gets shorter) and put back in front of the
+ * bar the cursor is in (it gets longer), with the usual keys plus Shift, or the buttons
+ * above the grid; see `stores/editor.ts`.
+ */
+const barsLabel = computed(() => {
+  const range = editor.selectedBars
+  if (!range) return ''
+  const bars = range.end - range.start
+  return `${bars} ${bars === 1 ? 'bar' : 'bars'}`
+})
+
+const cursorBarLabel = computed(() => {
+  const at = transport.position
+  if (!at) return 'the start'
+  const section = store.song.sections[at.sectionIndex]
+  const timing = store.timeline[at.sectionIndex]
+  if (!section || !timing) return 'the start'
+  return `${section.name} bar ${Math.floor(at.stepInSection / timing.stepsPerBar) + 1}`
+})
+
+const pasteBarsTitle = computed(() => {
+  const clip = editor.barClipboard
+  if (!clip) return ''
+  const bars = clip.bars.length
+  return `Put the ${bars} cut or copied ${bars === 1 ? 'bar' : 'bars'} in front of the bar the cursor is in: ${cursorBarLabel.value} (Ctrl+Shift+V)`
+})
+
+/**
+ * Keyboard shortcuts anywhere outside a text field: Ctrl/Cmd+C, X, V and Delete for the
+ * block; the same with Shift for the selected bars.
+ */
 function onKey(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
   const tag = target?.tagName
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || target?.isContentEditable) return
   const modifier = (event.ctrlKey || event.metaKey) && !event.altKey
+  const key = event.key.toLowerCase()
+  const erase = !modifier && !event.altKey && (event.key === 'Delete' || event.key === 'Backspace')
   let handled = false
   if (modifier && !event.shiftKey) {
-    const key = event.key.toLowerCase()
     if (key === 'c') handled = editor.copy()
     else if (key === 'x') handled = editor.cut()
     else if (key === 'v') handled = editor.paste() !== null
-  } else if (!modifier && (event.key === 'Delete' || event.key === 'Backspace')) {
+  } else if (modifier && event.shiftKey) {
+    if (key === 'c') handled = editor.copyBars()
+    else if (key === 'x') handled = editor.cutBars()
+    else if (key === 'v') handled = editor.pasteBars() !== null
+  } else if (erase && !event.shiftKey) {
     handled = editor.deleteSelection()
+  } else if (erase && event.shiftKey) {
+    handled = editor.deleteBars()
   }
   if (handled) event.preventDefault()
 }
@@ -344,6 +384,42 @@ function cellClass(
       <button v-if="editor.hasClipboard" class="small" :title="pasteTitle" data-testid="paste" @click="editor.paste()">
         Paste at cursor
       </button>
+      <div v-if="editor.hasSelectedBars" class="block-tools" data-testid="bar-selection">
+        <span class="muted selection-size" data-testid="bar-selection-size">{{ barsLabel }} selected</span>
+        <button
+          class="small"
+          title="Copy the selected bars, gates and all (Ctrl+Shift+C)"
+          data-testid="copy-bars"
+          @click="editor.copyBars()"
+        >
+          Copy bars
+        </button>
+        <button
+          class="small"
+          title="Copy the selected bars and take them out of the song (Ctrl+Shift+X)"
+          data-testid="cut-bars"
+          @click="editor.cutBars()"
+        >
+          Cut bars
+        </button>
+        <button
+          class="small"
+          title="Take the selected bars out of the song; the bars after them move up (Shift+Delete)"
+          data-testid="delete-bars"
+          @click="editor.deleteBars()"
+        >
+          Delete bars
+        </button>
+      </div>
+      <button
+        v-if="editor.hasBarClipboard"
+        class="small"
+        :title="pasteBarsTitle"
+        data-testid="paste-bars"
+        @click="editor.pasteBars()"
+      >
+        Insert bars at cursor
+      </button>
       <button class="primary" :disabled="!store.canAddChannel" data-testid="add-channel" @click="store.addChannel()">
         + Add channel
       </button>
@@ -420,7 +496,9 @@ function cellClass(
             >
               ✕
             </button>
-            <span v-else class="loop-hint muted">click or drag a bar</span>
+            <span v-else class="loop-hint muted" title="The bars between the loop points are also the selected bars: copy, cut and delete them above the grid">
+              click or drag a bar
+            </span>
           </div>
           <template v-for="{ section, bars } in sections" :key="section.id">
             <div
@@ -514,6 +592,8 @@ function cellClass(
 
 .head {
   display: flex;
+  /* The block and bar tools can show at once (see below), so the head is allowed to wrap. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-bottom: 10px;
@@ -528,7 +608,7 @@ function cellClass(
   margin-right: auto;
 }
 
-/* Copy, cut, delete and clear for the selected block, and paste for the clipboard. */
+/* Copy, cut, delete and clear for the selected block and paste for its clipboard; the same for the selected bars. */
 .block-tools {
   display: flex;
   align-items: center;

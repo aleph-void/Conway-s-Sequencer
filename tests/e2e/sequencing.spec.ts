@@ -173,6 +173,59 @@ test.describe('drawing gates', () => {
     expect(await checked(1, 32, 36)).toBe('....')
   })
 
+  test('cuts the bars between the loop points out of the song and inserts them at the cursor', async ({
+    midiPage: page,
+  }) => {
+    const cell = (c: number, s: number) => page.getByTestId(`cell-${c}-0-${s}`)
+    const checked = async (c: number, from: number, to: number) => {
+      const out: string[] = []
+      for (let s = from; s < to; s++) out.push((await cell(c, s).getAttribute('aria-checked')) ?? '')
+      return out.map((v) => (v === 'true' ? 'x' : '.')).join('')
+    }
+    // A gate at the start of each bar on track 1, and one in bar 2 on track 2.
+    for (const s of [0, 16, 32, 48]) await cell(0, s).click()
+    await cell(1, 20).click()
+
+    // Drag across bars 2 and 3 on the loop strip: they are the selected bars.
+    const from = (await page.getByTestId('loop-bar-1').boundingBox())!
+    const to = (await page.getByTestId('loop-bar-2').boundingBox())!
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 })
+    await page.mouse.up()
+    await expect(page.getByTestId('bar-selection-size')).toHaveText('2 bars selected')
+    await expect(page.getByTestId('paste-bars')).toHaveCount(0)
+
+    // Cut takes them out: the song is two bars shorter, bar 4 has moved up to bar 2, the points are gone.
+    await page.getByTestId('cut-bars').click()
+    await expect(page.locator('.bar-label')).toHaveCount(2)
+    await expect(page.getByTestId('channel-count')).toContainText('32 steps')
+    expect(await checked(0, 0, 32)).toBe('x...............x...............')
+    expect(await checked(1, 0, 32)).toBe('................................')
+    await expect(page.getByTestId('loop-range')).toHaveCount(0)
+    await expect(page.getByTestId('bar-selection')).toHaveCount(0)
+    const paste = page.getByTestId('paste-bars')
+    await expect(paste).toHaveAttribute('title', /2 cut or copied bars in front of the bar the cursor is in: A bar 1/)
+
+    // The cursor is at the start: Ctrl+Shift+V puts the bars back in front of bar 1, and they become the loop points.
+    await page.keyboard.press('Control+Shift+v')
+    await expect(page.locator('.bar-label')).toHaveCount(4)
+    expect(await checked(0, 0, 64)).toBe('x...............x...............x...............x...............')
+    expect(await checked(1, 0, 64)).toBe('....x...........................................................')
+    await expect(page.getByTestId('loop-range')).toContainText('bars 1–2')
+    await expect(page.getByTestId('bar-selection-size')).toHaveText('2 bars selected')
+
+    // Shift+Delete takes the selected bars out without copying them; the edit survives a reload.
+    await page.keyboard.press('Shift+Delete')
+    await expect(page.locator('.bar-label')).toHaveCount(2)
+    expect(await checked(0, 0, 32)).toBe('x...............x...............')
+    await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
+    await page.reload()
+    await expect(page.locator('.bar-label')).toHaveCount(2)
+    expect(await checked(0, 0, 32)).toBe('x...............x...............')
+    await expect(page.getByTestId('loop-range')).toHaveCount(0)
+  })
+
   test('autosaves every kind of edit, including settings and sections', async ({ midiPage: page }) => {
     const stored = () => storedSong(page)
     await page.getByTestId('song-name').fill('Everything')

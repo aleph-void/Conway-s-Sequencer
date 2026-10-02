@@ -294,6 +294,106 @@ describe('SequencerGrid', () => {
       wrapper.unmount()
     })
 
+    it('copies, cuts, deletes and inserts the bars between the loop points with the buttons', async () => {
+      const store = useSongStore()
+      const transport = useTransportStore()
+      const editor = useEditorStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const steps = (c: number) => store.song.sections[0]!.steps[store.song.channels[c]!.id] ?? []
+      store.setStep(store.song.sections[0]!.id, store.song.channels[0]!.id, 17, true)
+      store.setStep(store.song.sections[0]!.id, store.song.channels[1]!.id, 40, true)
+      expect(wrapper.find('[data-testid="bar-selection"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="paste-bars"]').exists()).toBe(false)
+
+      // Dragging across the loop strip selects the bars.
+      await wrapper.get('[data-testid="loop-bar-1"]').trigger('pointerdown', { button: 0, buttons: 1 })
+      await wrapper.get('[data-testid="loop-bar-2"]').trigger('pointerenter', { buttons: 1 })
+      window.dispatchEvent(new Event('pointerup'))
+      await wrapper.vm.$nextTick()
+      expect(wrapper.get('[data-testid="bar-selection-size"]').text()).toBe('2 bars selected')
+
+      await wrapper.get('[data-testid="copy-bars"]').trigger('click')
+      expect(editor.barClipboard?.bars).toHaveLength(2)
+      const paste = wrapper.get('[data-testid="paste-bars"]')
+      expect(paste.attributes('title')).toContain('2 cut or copied bars in front of the bar the cursor is in: A bar 2 (Ctrl+Shift+V)')
+
+      // The cursor sits at the loop start, bar 2: the copy goes in front of it.
+      await paste.trigger('click')
+      expect(store.song.sections[0]!.bars).toBe(6)
+      expect(steps(0)).toEqual([17, 49])
+      expect(steps(1)).toEqual([40, 72])
+      expect(wrapper.findAll('.bar-label')).toHaveLength(6)
+      expect(store.song.settings.loopRange).toEqual({ start: 1, end: 3 })
+
+      transport.seekToStep(5 * 16)
+      await wrapper.vm.$nextTick()
+      expect(wrapper.get('[data-testid="paste-bars"]').attributes('title')).toContain('cursor is in: A bar 6')
+
+      // Delete takes the selected bars out; the ones after them move up and the points go.
+      await wrapper.get('[data-testid="delete-bars"]').trigger('click')
+      expect(store.song.sections[0]!.bars).toBe(4)
+      expect(steps(0)).toEqual([17])
+      expect(steps(1)).toEqual([40])
+      expect(store.song.settings.loopRange).toBeNull()
+      expect(wrapper.find('[data-testid="bar-selection"]').exists()).toBe(false)
+
+      store.setLoopBar(1)
+      await wrapper.vm.$nextTick()
+      expect(wrapper.get('[data-testid="bar-selection-size"]').text()).toBe('1 bar selected')
+      await wrapper.get('[data-testid="cut-bars"]').trigger('click')
+      expect(editor.barClipboard?.bars).toHaveLength(1)
+      expect(editor.barClipboard?.bars[0]?.rows[0]).toEqual([1])
+      expect(store.song.sections[0]!.bars).toBe(3)
+      expect(steps(0)).toEqual([])
+      expect(steps(1)).toEqual([24])
+      wrapper.unmount()
+    })
+
+    it('answers Ctrl+Shift+C, Ctrl+Shift+X, Ctrl+Shift+V and Shift+Delete for the bars', async () => {
+      const store = useSongStore()
+      const editor = useEditorStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      store.setStep(store.song.sections[0]!.id, store.song.channels[0]!.id, 16, true)
+      // Nothing selected: the keys are left to the browser.
+      expect(key({ key: 'C', ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(false)
+      expect(key({ key: 'Delete', shiftKey: true }).defaultPrevented).toBe(false)
+
+      store.setLoopRange(1, 2)
+      await wrapper.vm.$nextTick()
+      expect(key({ key: 'C', ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(true)
+      expect(editor.barClipboard?.bars[0]?.rows[0]).toEqual([0])
+      expect(store.song.sections[0]!.bars).toBe(4)
+      // Plain Delete is for the block, not the bars.
+      expect(key({ key: 'Delete' }).defaultPrevented).toBe(false)
+      expect(store.song.sections[0]!.bars).toBe(4)
+      expect(key({ key: 'Delete', shiftKey: true }).defaultPrevented).toBe(true)
+      expect(store.song.sections[0]!.bars).toBe(3)
+      expect(store.song.settings.loopRange).toBeNull()
+
+      // With the points gone the cursor goes back to the start: Cmd+Shift+V puts the bar in front of bar 1.
+      await wrapper.vm.$nextTick()
+      expect(key({ key: 'v', metaKey: true, shiftKey: true }).defaultPrevented).toBe(true)
+      expect(store.song.sections[0]!.bars).toBe(4)
+      expect(store.song.sections[0]!.steps[store.song.channels[0]!.id]).toEqual([0])
+      expect(store.song.settings.loopRange).toEqual({ start: 0, end: 1 })
+      await wrapper.vm.$nextTick()
+      expect(key({ key: 'X', ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(true)
+      expect(store.song.sections[0]!.bars).toBe(3)
+      expect(store.song.sections[0]!.steps).toEqual({})
+
+      // Shortcuts are left to text fields.
+      const input = document.createElement('input')
+      document.body.append(input)
+      store.setLoopBar(0)
+      await wrapper.vm.$nextTick()
+      const inField = new KeyboardEvent('keydown', { key: 'Delete', shiftKey: true, cancelable: true, bubbles: true })
+      input.dispatchEvent(inField)
+      expect(inField.defaultPrevented).toBe(false)
+      expect(store.song.sections[0]!.bars).toBe(3)
+      input.remove()
+      wrapper.unmount()
+    })
+
     it('answers Ctrl+C, Ctrl+X, Ctrl+V and Delete outside text fields', async () => {
       const store = useSongStore()
       const transport = useTransportStore()
@@ -321,7 +421,6 @@ describe('SequencerGrid', () => {
       expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]] })
 
       // Other modifier combinations, and keys typed into an input, are not for the grid.
-      expect(key({ key: 'v', ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(false)
       expect(key({ key: 'v', ctrlKey: true, altKey: true }).defaultPrevented).toBe(false)
       expect(steps(2)).toEqual([])
       const input = document.createElement('input')

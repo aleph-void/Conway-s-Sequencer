@@ -163,6 +163,117 @@ describe('useEditorStore', () => {
     expect(editor.hasSelection).toBe(true)
   })
 
+  describe('bars', () => {
+    it('has nothing to do without loop points or a bar clipboard', () => {
+      const editor = useEditorStore()
+      expect(editor.selectedBars).toBeNull()
+      expect(editor.hasSelectedBars).toBe(false)
+      expect(editor.hasBarClipboard).toBe(false)
+      expect(editor.copyBars()).toBe(false)
+      expect(editor.cutBars()).toBe(false)
+      expect(editor.deleteBars()).toBe(false)
+      expect(editor.pasteBars()).toBeNull()
+    })
+
+    it('treats the loop points as the selected bars, trimmed to the song', () => {
+      const song = useSongStore()
+      const editor = useEditorStore()
+      song.setLoopRange(1, 3)
+      expect(editor.selectedBars).toEqual({ start: 1, end: 3 })
+      song.updateSection(song.song.sections[0]!.id, { bars: 2 })
+      expect(editor.selectedBars).toEqual({ start: 1, end: 2 })
+    })
+
+    it('copies the selected bars and pastes them in front of the bar the cursor is in', async () => {
+      const song = useSongStore()
+      const transport = useTransportStore()
+      const editor = useEditorStore()
+      draw(0, 16)
+      draw(0, 31)
+      draw(1, 40)
+      song.setLoopRange(1, 3)
+      await nextTick()
+      expect(editor.copyBars()).toBe(true)
+      expect(editor.barClipboard).toEqual({
+        channels: 8,
+        bars: [
+          { name: 'A', tempo: 120, timeSignature: { beats: 4, unit: 4 }, subdivision: 4, rows: [[0, 15], [], [], [], [], [], [], []] },
+          { name: 'A', tempo: 120, timeSignature: { beats: 4, unit: 4 }, subdivision: 4, rows: [[], [8], [], [], [], [], [], []] },
+        ],
+      })
+
+      // Stopped, the cursor sits at the start of the loop points: bar 2.
+      expect(editor.cursorBar).toBe(1)
+      const before = song.revision
+      expect(editor.pasteBars()).toEqual({ start: 1, end: 3 })
+      expect(song.revision).toBe(before + 1)
+      expect(song.song.sections[0]!.bars).toBe(6)
+      expect(steps(0)).toEqual([16, 31, 48, 63])
+      expect(steps(1)).toEqual([40, 72])
+      // The pasted bars are now the loop points, so they show, and the cursor waits at them.
+      expect(song.song.settings.loopRange).toEqual({ start: 1, end: 3 })
+
+      // A click on a bar header puts the cursor in it; the bars go in front of that bar.
+      transport.seekToStep(5 * 16 + 7)
+      expect(editor.cursorBar).toBe(5)
+      expect(editor.pasteBars()).toEqual({ start: 5, end: 7 })
+      expect(song.song.sections[0]!.bars).toBe(8)
+      expect(steps(0)).toEqual([16, 31, 48, 63, 80, 95])
+      expect(song.song.settings.loopRange).toEqual({ start: 5, end: 7 })
+    })
+
+    it('deletes the selected bars, clearing the loop points, and cuts them to the clipboard', () => {
+      const song = useSongStore()
+      const editor = useEditorStore()
+      draw(0, 0)
+      draw(0, 20)
+      draw(0, 50)
+      song.setLoopRange(1, 3)
+      const before = song.revision
+      expect(editor.deleteBars()).toBe(true)
+      expect(song.revision).toBe(before + 1)
+      expect(song.song.sections[0]!.bars).toBe(2)
+      expect(steps(0)).toEqual([0, 18])
+      expect(song.song.settings.loopRange).toBeNull()
+      expect(editor.hasBarClipboard).toBe(false)
+
+      song.setLoopRange(1, 2)
+      expect(editor.cutBars()).toBe(true)
+      expect(editor.barClipboard?.bars).toHaveLength(1)
+      expect(editor.barClipboard?.bars[0]?.rows[0]).toEqual([2])
+      expect(song.song.sections[0]!.bars).toBe(1)
+      expect(steps(0)).toEqual([0])
+      expect(song.song.settings.loopRange).toBeNull()
+    })
+
+    it('keeps loop points that lie after the deleted bars, moved up with them', () => {
+      const song = useSongStore()
+      const editor = useEditorStore()
+      song.addSection({ bars: 2 })
+      song.setLoopRange(4, 6)
+      // The selected bars are the loop points, so deleting through the store is the
+      // only way to take out other bars; the points then move up with the song.
+      expect(song.deleteBars({ start: 0, end: 2 })).toEqual({ start: 0, end: 2 })
+      expect(song.song.settings.loopRange).toEqual({ start: 2, end: 4 })
+      expect(editor.selectedBars).toEqual({ start: 2, end: 4 })
+    })
+
+    it('carries the bar clipboard, but not the loop points, to another song', async () => {
+      const song = useSongStore()
+      const editor = useEditorStore()
+      draw(2, 3)
+      song.setLoopRange(0, 1)
+      editor.copyBars()
+      song.newSong()
+      await nextTick()
+      expect(song.song.settings.loopRange).toBeNull()
+      expect(editor.hasBarClipboard).toBe(true)
+      expect(editor.pasteBars()).toEqual({ start: 0, end: 1 })
+      expect(song.song.sections[0]!.bars).toBe(5)
+      expect(steps(2)).toEqual([3])
+    })
+  })
+
   it('drops the selection, but not the clipboard, when another song is opened', async () => {
     const song = useSongStore()
     const editor = useEditorStore()
