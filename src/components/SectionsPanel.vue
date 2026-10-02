@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { MAX_BARS, MAX_TEMPO, MIN_BARS, MIN_TEMPO, SUBDIVISIONS, TIME_SIGNATURE_UNITS, type Section } from '../core/song'
+import {
+  MAX_BARS,
+  MAX_SWING,
+  MAX_TEMPO,
+  MIN_BARS,
+  MIN_SWING,
+  MIN_TEMPO,
+  SUBDIVISIONS,
+  TIME_SIGNATURE_UNITS,
+  type Section,
+} from '../core/song'
 import { formatDuration } from '../core/timing'
 import { useSongStore } from '../stores/song'
 
@@ -99,6 +109,11 @@ function onTempo(section: Section, event: Event) {
   store.updateSection(section.id, { tempo: raw === '' ? null : Number(raw) })
 }
 
+function onSwing(section: Section, event: Event) {
+  const raw = (event.target as HTMLInputElement).value.trim()
+  store.updateSection(section.id, { swing: raw === '' ? null : Number(raw) })
+}
+
 function onBeats(section: Section, event: Event) {
   store.updateSection(section.id, { timeSignature: { ...section.timeSignature, beats: num(event) } })
 }
@@ -137,6 +152,7 @@ function remove(section: Section) {
           <th>Time sig.</th>
           <th>Bars</th>
           <th>Steps / beat</th>
+          <th>Swing %</th>
           <th>Length</th>
           <th class="sr-only">Actions</th>
         </tr>
@@ -225,6 +241,27 @@ function remove(section: Section) {
               <option v-for="s in SUBDIVISIONS" :key="s" :value="s">{{ s }}</option>
             </select>
           </td>
+          <td>
+            <input
+              type="number"
+              :min="MIN_SWING"
+              :max="MAX_SWING"
+              step="1"
+              :value="section.swing ?? ''"
+              :placeholder="`${store.resolvedSwings[index]}`"
+              :title="
+                section.swing === null
+                  ? `Inherits ${store.resolvedSwings[index]} % swing`
+                  : `Swing: ${MIN_SWING} % is straight, 67 % a triplet feel, ${MAX_SWING} % the hardest shuffle`
+              "
+              aria-label="Swing"
+              data-testid="section-swing"
+              @change="onSwing(section, $event)"
+            />
+            <span v-if="section.swing === null" class="muted inherit" data-testid="swing-inherited">
+              ↳ {{ store.resolvedSwings[index] }}
+            </span>
+          </td>
           <td class="mono muted">
             {{ store.timeline[index]?.stepCount }} steps · {{ formatDuration(store.timeline[index]?.duration ?? 0) }}
           </td>
@@ -262,7 +299,7 @@ function remove(section: Section) {
 }
 
 /*
- * Eight columns of inputs do not fit a phone: the table scrolls sideways within the panel.
+ * Nine columns of inputs do not fit a phone: the table scrolls sideways within the panel.
  * Positioned so the absolutely placed .sr-only header cells stay inside the scroll area
  * instead of widening the page.
  */

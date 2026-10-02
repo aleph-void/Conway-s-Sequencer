@@ -15,6 +15,15 @@ export const MAX_CHANNELS = 62
 export const MIN_TEMPO = 20
 export const MAX_TEMPO = 400
 export const DEFAULT_TEMPO = 120
+/**
+ * Swing, as the MPC-style percentage most DAWs and grooveboxes use: the second step of every
+ * pair of steps inside a beat is pushed late to this fraction of the pair. 50 % is straight
+ * (the step sits halfway through the pair), 66.7 % is a triplet feel (two thirds) and 75 % is
+ * the hardest shuffle, with the off-step a dotted step late.
+ */
+export const MIN_SWING = 50
+export const MAX_SWING = 75
+export const DEFAULT_SWING = MIN_SWING
 export const MIN_BARS = 1
 export const MAX_BARS = 256
 export const SUBDIVISIONS = [1, 2, 3, 4, 6, 8] as const
@@ -48,6 +57,12 @@ export interface Section {
   bars: number
   /** Steps per beat; 4 means sixteenth-note resolution in x/4 time. */
   subdivision: Subdivision
+  /**
+   * Swing percentage (MIN_SWING..MAX_SWING, 50 = straight) applied to the step grid, or `null`
+   * to inherit the previous section's swing (DEFAULT_SWING for the first section). See
+   * `swingDelay` in core/timing.ts.
+   */
+  swing: number | null
   /** channelId -> sorted, de-duplicated list of "on" step indices within this section. */
   steps: Record<string, number[]>
 }
@@ -133,6 +148,7 @@ export function createSection(overrides: Partial<Section> = {}): Section {
     timeSignature: { beats: 4, unit: 4 },
     bars: 4,
     subdivision: 4,
+    swing: null,
     steps: {},
     ...overrides,
   }

@@ -80,6 +80,40 @@ describe('compileSong', () => {
     expect(events[1]!.time).toBeCloseTo(2 - MIN_GAP_SECONDS)
   })
 
+  it('swings the off-steps late and holds the step before each one until it starts', () => {
+    const s = song()
+    s.sections[0]!.swing = 66 // steps 1, 3, 5... start 0.66 × 250 ms = 165 ms into their pair
+    s.sections[0]!.steps = { c0: [0, 1, 2, 3, 5] }
+    const events = gates(compileSong(s).events)
+    expect(events.map((e) => e.kind)).toEqual(['on', 'off', 'on', 'off'])
+    // Steps 0-3 are one gate: from 0 to the start of step 4, which does not swing.
+    expect(events[0]!.time).toBe(0)
+    expect(events[1]!.time).toBeCloseTo(0.5 - MIN_GAP_SECONDS)
+    // Step 5 starts late and still ends at step 6, so it is a shorter gate.
+    expect(events[2]!.time).toBeCloseTo(0.5 + 0.165)
+    expect(events[3]!.time).toBeCloseTo(0.75 - MIN_GAP_SECONDS)
+  })
+
+  it('holds a straight step on until the swung step after it starts', () => {
+    const s = song()
+    s.sections[0]!.swing = 75
+    s.sections[0]!.steps = { c0: [0], c5: [1] }
+    const [on0, off0, on1, off1] = gates(compileSong(s).events)
+    // Step 0's gate runs until step 1 starts at 187.5 ms; step 1's gate is the rest of the pair.
+    expect(on0!.time).toBe(0)
+    expect(off0!.time).toBeCloseTo(0.1875 - MIN_GAP_SECONDS)
+    expect(on1!.time).toBeCloseTo(0.1875)
+    expect(off1!.time).toBeCloseTo(0.25 - MIN_GAP_SECONDS)
+    expect(gates(compileSong(s).events)).toHaveLength(4)
+  })
+
+  it('keeps the clock straight whatever the swing', () => {
+    const s = song()
+    const straight = clock(compileSong(s).events).map((e) => e.time)
+    s.sections[0]!.swing = 75
+    expect(clock(compileSong(s).events).map((e) => e.time)).toEqual(straight)
+  })
+
   it('skips muted channels', () => {
     const s = song()
     s.channels[0]!.muted = true

@@ -116,6 +116,22 @@ describe('highNotes', () => {
     expect(gate(0.125 - MIN_GAP_SECONDS)).toBe(true)
   })
 
+  it('follows the swung step starts', () => {
+    const s = songWithGate([0, 2, 3]) // 75 %: step 1 starts at 187.5 ms, step 3 at 437.5 ms
+    s.sections[0]!.swing = 75
+    const t = buildTimeline(s)
+    const gate = (at: number) => highNotes(s, t, at, true).has(36)
+    // Step 0 holds on until step 1 actually starts, minus the gap before the next gate.
+    expect(gate(0.15)).toBe(true)
+    expect(gate(0.1875 - MIN_GAP_SECONDS - 0.0001)).toBe(true)
+    expect(gate(0.1875 - MIN_GAP_SECONDS)).toBe(false)
+    expect(gate(0.2)).toBe(false)
+    // Steps 2 and 3 are one gate from 250 ms to the start of step 4 at 500 ms.
+    expect(gate(0.3)).toBe(true)
+    expect(gate(0.45)).toBe(true)
+    expect(gate(0.5 - MIN_GAP_SECONDS)).toBe(false)
+  })
+
   it('respects mute and solo', () => {
     const s = songWithGate([0])
     const t = buildTimeline(s)

@@ -191,6 +191,23 @@ describe('useSongStore', () => {
       store.updateSection('nope', { bars: 2 })
     })
 
+    it('clamps swing, inherits it when cleared and resolves it through the timeline', () => {
+      const store = useSongStore()
+      const first = store.song.sections[0]!
+      const second = store.addSection()
+      expect(second.swing).toBeNull()
+      store.updateSection(first.id, { swing: 99 })
+      expect(first.swing).toBe(75)
+      expect(store.resolvedSwings).toEqual([75, 75])
+      expect(store.timeline.map((t) => t.swing)).toEqual([75, 75])
+      store.updateSection(second.id, { swing: 10 })
+      expect(second.swing).toBe(50)
+      store.updateSection(first.id, { swing: Number.NaN })
+      expect(first.swing).toBeNull()
+      store.updateSection(second.id, { swing: null })
+      expect(store.resolvedSwings).toEqual([50, 50])
+    })
+
     it('resolves inherited tempos through the timeline', () => {
       const store = useSongStore()
       store.addSection({ tempo: null })

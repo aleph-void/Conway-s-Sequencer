@@ -11,7 +11,7 @@
 import { CLOCK_NOTE } from './midi'
 import { MIN_GAP_SECONDS, clockPeriod, clockPulseWidth } from './compile'
 import { isChannelSilenced, isStepOn, type Song } from './song'
-import { locate, type SectionTiming } from './timing'
+import { locate, stepOffsetSeconds, type SectionTiming } from './timing'
 
 /** The module's outputs, laid out MODULE_ROWS by MODULE_COLUMNS, numbered row by row. */
 export const MODULE_OUTPUTS = 64
@@ -106,13 +106,15 @@ export function highNotes(
   const phase = (positionSeconds - timing.startTime) % period
   if (phase < clockPulseWidth(period)) notes.add(CLOCK_NOTE)
 
+  const EPS = 1e-9
   const step = pos.stepInSection
-  const timeInStep = positionSeconds - timing.startTime - step * timing.stepDuration
+  // Swing moves step starts, so measure against the next step's real start, not a straight one.
+  const timeToNextStep = timing.startTime + stepOffsetSeconds(timing, step + 1) - positionSeconds
   for (const channel of song.channels) {
     if (isChannelSilenced(channel, song.channels)) continue
     if (!isStepOn(section, channel.id, step)) continue
     const lastOfRun = step === timing.stepCount - 1 || !isStepOn(section, channel.id, step + 1)
-    if (lastOfRun && timeInStep >= timing.stepDuration - MIN_GAP_SECONDS) continue
+    if (lastOfRun && timeToNextStep <= MIN_GAP_SECONDS + EPS) continue
     const note = baseNote + channel.output
     if (note >= 0 && note <= 127) notes.add(note)
   }

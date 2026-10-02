@@ -37,6 +37,7 @@ describe('normalizeSong', () => {
       timeSignature: { beats: 4, unit: 4 },
       bars: 4,
       subdivision: 4,
+      swing: null,
       steps: {},
     })
     expect(song.settings).toEqual({
@@ -69,10 +70,16 @@ describe('normalizeSong', () => {
   it('clamps numeric ranges', () => {
     const song = normalizeSong({
       channels: [],
-      sections: [{ tempo: 9999, bars: 0, timeSignature: { beats: 99, unit: 5 }, subdivision: 7 }],
+      sections: [
+        { tempo: 9999, bars: 0, timeSignature: { beats: 99, unit: 5 }, subdivision: 7, swing: 99 },
+        { swing: 0 },
+        { swing: 62.5 },
+      ],
       settings: { midiChannel: 42, baseNote: 120, velocity: 0 },
     })
-    expect(song.sections[0]).toMatchObject({ tempo: 400, bars: 1, timeSignature: { beats: 32, unit: 4 }, subdivision: 4 })
+    expect(song.sections[0]).toMatchObject({ tempo: 400, bars: 1, timeSignature: { beats: 32, unit: 4 }, subdivision: 4, swing: 75 })
+    expect(song.sections[1]!.swing).toBe(50)
+    expect(song.sections[2]!.swing).toBe(62.5)
     expect(song.settings).toMatchObject({ midiChannel: 16, baseNote: 66, velocity: 1 })
   })
 
@@ -82,6 +89,13 @@ describe('normalizeSong', () => {
 
   it('rejects a non-numeric tempo', () => {
     expect(() => normalizeSong({ channels: [], sections: [{ tempo: 'fast' }] })).toThrow(/tempo/)
+  })
+
+  it('rejects a non-numeric swing and round-trips a set one', () => {
+    expect(() => normalizeSong({ channels: [], sections: [{ swing: 'lots' }] })).toThrow(/swing/)
+    const song = createSong('Shuffle')
+    song.sections[0]!.swing = 66
+    expect(parseSong(serializeSong(song)).sections[0]!.swing).toBe(66)
   })
 
   it('drops steps for unknown channels, de-duplicates and clamps to section length', () => {

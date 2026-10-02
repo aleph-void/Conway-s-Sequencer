@@ -1,5 +1,9 @@
 import {
+  DEFAULT_SWING,
   DEFAULT_TEMPO,
+  MAX_SWING,
+  MIN_SWING,
+  clamp,
   stepCount,
   stepsPerBar,
   type LoopRange,
@@ -20,6 +24,19 @@ export function resolveTempos(sections: readonly Pick<Section, 'tempo'>[], fallb
   })
 }
 
+/**
+ * Resolve each section's effective swing the same way: a `null` swing inherits from the
+ * previous section, and the first section without one is straight (DEFAULT_SWING). Out-of-range
+ * values are clamped so a bad file cannot push a step past the next one.
+ */
+export function resolveSwings(sections: readonly Pick<Section, 'swing'>[], fallback = DEFAULT_SWING): number[] {
+  let last = fallback
+  return sections.map((s) => {
+    if (s.swing !== null && Number.isFinite(s.swing)) last = clamp(s.swing, MIN_SWING, MAX_SWING)
+    return last
+  })
+}
+
 /** Seconds per step. Tempo is quarter-notes per minute; a beat is 4/unit quarter notes. */
 export function stepDurationSeconds(tempo: number, timeSignature: TimeSignature, subdivision: number): number {
   const quarterSeconds = 60 / tempo
@@ -31,7 +48,12 @@ export interface SectionTiming {
   sectionId: string
   index: number
   tempo: number
+  /** Resolved swing percentage, MIN_SWING..MAX_SWING. */
+  swing: number
+  /** Seconds per step on the straight grid, before swing. */
   stepDuration: number
+  /** Steps per beat (the section's subdivision): swing pairs steps up inside each beat. */
+  stepsPerBeat: number
   stepsPerBar: number
   stepCount: number
   /** Index of this section's first step in the whole-song step axis. */
@@ -45,6 +67,7 @@ export interface SectionTiming {
 
 export function buildTimeline(song: Pick<Song, 'sections'>): SectionTiming[] {
   const tempos = resolveTempos(song.sections)
+  const swings = resolveSwings(song.sections)
   let startStep = 0
   let startBar = 0
   let startTime = 0
@@ -57,7 +80,9 @@ export function buildTimeline(song: Pick<Song, 'sections'>): SectionTiming[] {
       sectionId: section.id,
       index,
       tempo,
+      swing: swings[index] ?? DEFAULT_SWING,
       stepDuration,
+      stepsPerBeat: section.subdivision,
       stepsPerBar: stepsPerBar(section),
       stepCount: count,
       startStep,
@@ -70,6 +95,29 @@ export function buildTimeline(song: Pick<Song, 'sections'>): SectionTiming[] {
     startTime += duration
     return timing
   })
+}
+
+type StepGrid = Pick<SectionTiming, 'swing' | 'stepDuration' | 'stepsPerBeat'>
+
+/**
+ * How late swing pushes a step, in seconds. Steps are paired up inside each beat (1 with 0,
+ * 3 with 2, ...) and the second of a pair starts `swing` percent of the way through the pair
+ * instead of halfway, so at 50 % nothing moves, at 66.7 % the off-steps fall on the last third
+ * of a triplet and at 75 % they are a dotted step late. The first step of a pair never moves,
+ * so beats and bars stay where they are; with an odd number of steps per beat the last step of
+ * the beat is unpaired and stays straight, and with one step per beat there is nothing to swing.
+ */
+export function swingDelay(grid: StepGrid, stepInSection: number): number {
+  if ((stepInSection % grid.stepsPerBeat) % 2 === 0) return 0
+  return ((grid.swing - 50) / 100) * 2 * grid.stepDuration
+}
+
+/**
+ * Seconds from the start of a section to the start of one of its steps, swing included. The
+ * step after the last one is the end of the section (it never swings, so that stays exact).
+ */
+export function stepOffsetSeconds(grid: StepGrid, stepInSection: number): number {
+  return stepInSection * grid.stepDuration + swingDelay(grid, stepInSection)
 }
 
 export function totalSteps(timeline: readonly SectionTiming[]): number {
@@ -125,7 +173,11 @@ export function locate(timeline: readonly SectionTiming[], timeSeconds: number):
   const EPS = 1e-9
   for (const t of timeline) {
     if (timeSeconds < t.startTime + t.duration - EPS) {
-      const stepInSection = Math.min(t.stepCount - 1, Math.floor((timeSeconds - t.startTime + EPS) / t.stepDuration))
+      const inSection = timeSeconds - t.startTime + EPS
+      let stepInSection = Math.min(t.stepCount - 1, Math.floor(inSection / t.stepDuration))
+      // Swing only ever pushes a step later, and by less than a step, so if the straight guess
+      // has not started yet the cursor is still on the step before it.
+      if (stepInSection > 0 && inSection < stepOffsetSeconds(t, stepInSection)) stepInSection -= 1
       return { sectionIndex: t.index, stepInSection, globalStep: t.startStep + stepInSection }
     }
   }
@@ -151,7 +203,7 @@ export function stepStartTime(timeline: readonly SectionTiming[], globalStep: nu
   const at = locateStep(timeline, globalStep)
   if (!at) return globalStep < 0 ? 0 : totalDuration(timeline)
   const t = timeline[at.sectionIndex]!
-  return t.startTime + at.stepInSection * t.stepDuration
+  return t.startTime + stepOffsetSeconds(t, at.stepInSection)
 }
 
 export function formatDuration(seconds: number): string {

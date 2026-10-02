@@ -7,9 +7,12 @@ import {
   locate,
   locateStep,
   loopRangeSeconds,
+  resolveSwings,
   resolveTempos,
   stepDurationSeconds,
+  stepOffsetSeconds,
   stepStartTime,
+  swingDelay,
   totalBars,
   totalDuration,
   totalSteps,
@@ -29,6 +32,53 @@ describe('resolveTempos', () => {
 
   it('ignores non-positive tempos', () => {
     expect(resolveTempos([{ tempo: 100 }, { tempo: 0 }, { tempo: -5 }])).toEqual([100, 100, 100])
+  })
+})
+
+describe('resolveSwings', () => {
+  it('inherits the previous section swing when null and is straight by default', () => {
+    expect(resolveSwings([{ swing: null }, { swing: 66 }, { swing: null }, { swing: 50 }])).toEqual([50, 66, 66, 50])
+    expect(resolveSwings([{ swing: null }], 60)).toEqual([60])
+  })
+
+  it('clamps swing to the usable range', () => {
+    expect(resolveSwings([{ swing: 10 }, { swing: 99 }, { swing: Number.NaN }])).toEqual([50, 75, 75])
+  })
+})
+
+describe('swing', () => {
+  // A 125 ms sixteenth grid, so a pair of steps is 250 ms.
+  const grid = (swing: number, stepsPerBeat = 4) => ({ swing, stepDuration: 0.125, stepsPerBeat })
+
+  it('leaves every step in place at 50 %', () => {
+    for (let step = 0; step < 8; step++) {
+      expect(swingDelay(grid(50), step)).toBe(0)
+      expect(stepOffsetSeconds(grid(50), step)).toBeCloseTo(step * 0.125)
+    }
+  })
+
+  it('delays the second step of each pair to the swing fraction of the pair', () => {
+    // 66 %: the off-step starts 0.66 × 250 ms = 165 ms into the pair, 40 ms late.
+    expect(swingDelay(grid(66), 1)).toBeCloseTo(0.04)
+    expect(stepOffsetSeconds(grid(66), 1)).toBeCloseTo(0.165)
+    expect(stepOffsetSeconds(grid(66), 3)).toBeCloseTo(0.25 + 0.165)
+    // 75 %: a dotted step late, so the off-step is 62.5 ms late and the next one is on time.
+    expect(stepOffsetSeconds(grid(75), 1)).toBeCloseTo(0.1875)
+    expect(stepOffsetSeconds(grid(75), 2)).toBeCloseTo(0.25)
+  })
+
+  it('never moves the first step of a pair, so beats and bars stay put', () => {
+    for (const step of [0, 2, 4, 6, 8, 16]) expect(swingDelay(grid(75), step)).toBe(0)
+  })
+
+  it('pairs steps inside a beat, leaving an odd last step and single-step beats straight', () => {
+    // Three steps per beat: steps 0 and 1 pair up, step 2 is on its own; the next beat starts at 3.
+    expect(swingDelay(grid(75, 3), 1)).toBeCloseTo(0.0625)
+    expect(swingDelay(grid(75, 3), 2)).toBe(0)
+    expect(swingDelay(grid(75, 3), 3)).toBe(0)
+    expect(swingDelay(grid(75, 3), 4)).toBeCloseTo(0.0625)
+    // One step per beat: nothing to pair.
+    expect(swingDelay(grid(75, 1), 1)).toBe(0)
   })
 })
 
@@ -118,6 +168,30 @@ describe('buildTimeline', () => {
     expect(locateStep(tl, -1)).toBeNull()
     expect(locateStep(tl, 1.5)).toBeNull()
     expect(locateStep([], 0)).toBeNull()
+  })
+
+  it('locates and times steps on a swung grid', () => {
+    // 66 % swing on 125 ms steps: step 1 starts 40 ms late, at 165 ms, and step 2 on time at 250 ms.
+    const tl = buildTimeline({ sections: [createSection({ id: 'a', tempo: 120, bars: 1, swing: 66 })] })
+    expect(tl[0]!.swing).toBe(66)
+    expect(tl[0]!.duration).toBe(2)
+    expect(stepStartTime(tl, 0)).toBe(0)
+    expect(stepStartTime(tl, 1)).toBeCloseTo(0.165)
+    expect(stepStartTime(tl, 2)).toBeCloseTo(0.25)
+    expect(stepStartTime(tl, 16)).toBe(2)
+    expect(locate(tl, 0.13)!.stepInSection).toBe(0)
+    expect(locate(tl, 0.164)!.stepInSection).toBe(0)
+    expect(locate(tl, 0.165)!.stepInSection).toBe(1)
+    expect(locate(tl, 0.249)!.stepInSection).toBe(1)
+    expect(locate(tl, 0.25)!.stepInSection).toBe(2)
+    expect(locate(tl, 1.999)!.stepInSection).toBe(15)
+  })
+
+  it('inherits swing from the previous section', () => {
+    const tl = buildTimeline({
+      sections: [createSection({ swing: 60 }), createSection({ swing: null }), createSection({ swing: 50 })],
+    })
+    expect(tl.map((t) => t.swing)).toEqual([60, 60, 50])
   })
 
   it('maps a step to its start time, and the step after the last one to the end', () => {
