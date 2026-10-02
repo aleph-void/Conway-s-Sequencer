@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { createSection } from './song'
 import {
+  barStartTime,
   buildTimeline,
   formatDuration,
   locate,
+  loopRangeSeconds,
   resolveTempos,
   stepDurationSeconds,
+  totalBars,
   totalDuration,
   totalSteps,
 } from './timing'
@@ -54,6 +57,8 @@ describe('buildTimeline', () => {
     const tl = buildTimeline({ sections })
     expect(tl.map((t) => t.tempo)).toEqual([120, 120, 60])
     expect(tl.map((t) => t.startStep)).toEqual([0, 16, 40])
+    expect(tl.map((t) => t.startBar)).toEqual([0, 1, 3])
+    expect(totalBars(tl)).toBe(4)
     expect(tl.map((t) => t.stepCount)).toEqual([16, 24, 4])
     expect(tl.map((t) => t.startTime)).toEqual([0, 2, 5])
     expect(tl.map((t) => t.duration)).toEqual([2, 3, 4])
@@ -61,9 +66,30 @@ describe('buildTimeline', () => {
     expect(totalDuration(tl)).toBe(9)
   })
 
+  it('maps bars on the whole-song bar axis to their start time', () => {
+    const tl = buildTimeline({ sections })
+    // Section a: one 4/4 bar of 2 s; b: two 3/4 bars of 1.5 s; c: one bar of 4 s.
+    expect([0, 1, 2, 3].map((bar) => barStartTime(tl, bar))).toEqual([0, 2, 3.5, 5])
+    // The bar after the last one is the end of the song, so a range's `end` converts too.
+    expect(barStartTime(tl, 4)).toBe(9)
+    expect(barStartTime(tl, 99)).toBe(9)
+    expect(barStartTime([], 0)).toBe(0)
+  })
+
+  it('converts a loop range to seconds and reports none for no range', () => {
+    const tl = buildTimeline({ sections })
+    expect(loopRangeSeconds(tl, null)).toBeNull()
+    expect(loopRangeSeconds(tl, { start: 1, end: 3 })).toEqual({ start: 2, end: 5 })
+    expect(loopRangeSeconds(tl, { start: 0, end: 4 })).toEqual({ start: 0, end: 9 })
+    // A range past the end of the song covers no time at all.
+    expect(loopRangeSeconds(tl, { start: 4, end: 6 })).toBeNull()
+    expect(loopRangeSeconds([], { start: 0, end: 1 })).toBeNull()
+  })
+
   it('is empty for an empty song', () => {
     expect(buildTimeline({ sections: [] })).toEqual([])
     expect(totalSteps([])).toBe(0)
+    expect(totalBars([])).toBe(0)
     expect(totalDuration([])).toBe(0)
   })
 

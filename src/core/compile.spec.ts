@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CLOCK_CHANNEL_ID, MIN_GAP_SECONDS, compileSong, type MidiEvent } from './compile'
+import { CLOCK_CHANNEL_ID, MIN_GAP_SECONDS, compileSong, windowEvents, type MidiEvent } from './compile'
 import { CLOCK_NOTE } from './midi'
 import { createChannel, createSection, createSong, type Song } from './song'
 
@@ -184,5 +184,85 @@ describe('compileSong', () => {
     const s = song()
     s.sections[0]!.steps = { c0: [0, 3, 7], c5: [1, 2] }
     expect(compileSong(s)).toEqual(compileSong(s))
+  })
+})
+
+describe('windowEvents', () => {
+  function ev(time: number, kind: 'on' | 'off', note = 36, channelId = 'c0'): MidiEvent {
+    return { time, kind, note, channelId, data: kind === 'on' ? [0x90, note, 100] : [0x80, note, 0] }
+  }
+
+  it('keeps only the events inside the window, re-based to start at 0', () => {
+    const events = [ev(0, 'on'), ev(0.1, 'off'), ev(1, 'on'), ev(1.1, 'off'), ev(2, 'on'), ev(2.1, 'off')]
+    const out = windowEvents(events, 1, 2)
+    expect(out.map((e) => [e.kind, Number(e.time.toFixed(6))])).toEqual([
+      ['on', 0],
+      ['off', 0.1],
+    ])
+    expect(out[0]!.data).toEqual([0x90, 36, 100])
+  })
+
+  it('is empty for an empty or inverted window', () => {
+    expect(windowEvents([ev(0, 'on'), ev(0.1, 'off')], 1, 1)).toEqual([])
+    expect(windowEvents([ev(0, 'on'), ev(0.1, 'off')], 2, 1)).toEqual([])
+  })
+
+  it('raises a gate that is already high when the window starts', () => {
+    const events = [ev(0.5, 'on'), ev(0.7, 'on', 40), ev(0.9, 'off', 40), ev(1.5, 'off')]
+    const out = windowEvents(events, 1, 2)
+    // Note 36 spans the window start: its note-on comes back at 0. Note 40 ended before it.
+    expect(out).toEqual([ev(0, 'on'), ev(0.5, 'off')])
+  })
+
+  it('releases a gate that is still high when the window ends', () => {
+    const events = [ev(1.5, 'on'), ev(3, 'off')]
+    const out = windowEvents(events, 1, 2)
+    expect(out).toHaveLength(2)
+    expect(out[0]).toEqual(ev(0.5, 'on'))
+    expect(out[1]).toMatchObject({ kind: 'off', note: 36, channelId: 'c0', data: [0x80, 36, 0] })
+    expect(out[1]!.time).toBeCloseTo(1 - MIN_GAP_SECONDS)
+  })
+
+  it('releases on the channel the gate was raised on', () => {
+    const on: MidiEvent = { time: 1.5, kind: 'on', note: 36, channelId: 'c0', data: [0x95, 36, 100] }
+    const out = windowEvents([on, ev(3, 'off')], 1, 2)
+    expect(out[1]!.data).toEqual([0x85, 36, 0])
+  })
+
+  it('bridges a gate that spans the whole window', () => {
+    const events = [ev(0, 'on'), ev(5, 'off')]
+    const out = windowEvents(events, 1, 2)
+    expect(out.map((e) => e.kind)).toEqual(['on', 'off'])
+    expect(out[0]!.time).toBe(0)
+    expect(out[1]!.time).toBeCloseTo(1 - MIN_GAP_SECONDS)
+  })
+
+  it('never releases a gate before its own note-on in a tiny window', () => {
+    const events = [ev(1.0005, 'on'), ev(5, 'off')]
+    const out = windowEvents(events, 1, 1.001)
+    expect(out.map((e) => e.kind)).toEqual(['on', 'off'])
+    expect(out[1]!.time).toBeGreaterThanOrEqual(out[0]!.time)
+  })
+
+  it('treats an event exactly at the window end as outside it', () => {
+    const events = [ev(0, 'on'), ev(0.1, 'off'), ev(2, 'on'), ev(2.1, 'off')]
+    expect(windowEvents(events, 1, 2)).toEqual([])
+  })
+
+  it('cuts a compiled song, clock included, to a bar in the middle', () => {
+    const s = song()
+    s.sections[0]!.bars = 3 // three 2 s bars
+    s.sections[0]!.steps = { c0: [0, 15, 16, 17, 30, 31, 32] } // a gate across each bar line
+    const compiled = compileSong(s)
+    const out = windowEvents(compiled.events, 2, 4)
+    expect(clock(out)).toHaveLength(2 * 16 * 4)
+    expect(clock(out)[0]!.time).toBe(0)
+    const g = gates(out)
+    expect(g.map((e) => [e.kind, Number(e.time.toFixed(3))])).toEqual([
+      ['on', 0], // steps 15–17 are one gate; it is high at the bar line, so it goes high at 0
+      ['off', 0.248],
+      ['on', 1.75], // steps 30–32 run past the bar line: released just before the window ends
+      ['off', 1.998],
+    ])
   })
 })

@@ -65,9 +65,56 @@ export function compileSong(song: Song): CompiledSong {
     }
   }
 
-  // Sort by time; at equal times send note-offs before note-ons so a new gate on the same note works.
-  events.sort((a, b) => a.time - b.time || rank(a) - rank(b) || a.note - b.note)
+  sortEvents(events)
   return { events, duration: totalDuration(timeline), timeline }
+}
+
+/** Sort by time; at equal times send note-offs before note-ons so a new gate on the same note works. */
+export function sortEvents(events: MidiEvent[]): MidiEvent[] {
+  return events.sort((a, b) => a.time - b.time || rank(a) - rank(b) || a.note - b.note)
+}
+
+/**
+ * Cut a compiled, time-sorted event list down to the window [start, end) seconds and re-base
+ * it so the window starts at 0, which is what playing between loop points comes down to.
+ *
+ * Gates are kept whole at the edges, exactly as if the window were the entire song: a gate
+ * that is already high when the window starts gets a note-on at 0, and one still high when
+ * it ends gets a note-off just before the end (MIN_GAP_SECONDS early, like every gate
+ * before a following step), so that looping the window re-triggers it cleanly and nothing
+ * is left hanging. The x16 clock is cut the same way.
+ */
+export function windowEvents(events: readonly MidiEvent[], start: number, end: number): MidiEvent[] {
+  const duration = end - start
+  if (!(duration > 0)) return []
+  const EPS = 1e-9
+  const out: MidiEvent[] = []
+  /** Note -> the note-on that left it high, for notes high at `start` and then inside the window. */
+  const high = new Map<number, MidiEvent>()
+  let inside = false
+  for (const event of events) {
+    if (event.time >= end - EPS) break
+    if (!inside && event.time >= start - EPS) {
+      // Entering the window: whatever is still high from before it goes high again at 0.
+      inside = true
+      for (const on of high.values()) out.push({ ...on, time: 0 })
+    }
+    if (inside) out.push({ ...event, time: Math.max(0, event.time - start) })
+    if (event.kind === 'on') high.set(event.note, event)
+    else high.delete(event.note)
+  }
+  if (!inside) for (const on of high.values()) out.push({ ...on, time: 0 })
+  // Whatever is still high at the end is released just before the window ends.
+  const release = Math.max(MIN_GAP_SECONDS, duration - MIN_GAP_SECONDS)
+  for (const on of high.values()) {
+    const at = Math.max(release, Math.max(0, on.time - start))
+    out.push({ time: at, kind: 'off', note: on.note, channelId: on.channelId, data: offFor(on) })
+  }
+  return sortEvents(out)
+}
+
+function offFor(on: MidiEvent): number[] {
+  return noteOff(((on.data[0] ?? 0x90) & 0x0f) + 1, on.note)
 }
 
 /**

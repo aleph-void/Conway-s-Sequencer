@@ -11,7 +11,9 @@ import {
   clampStepsToLength,
   defaultSettings,
   generateId,
+  normalizeLoopRange,
   stepCount,
+  totalBars,
   type Channel,
   type Section,
   type Song,
@@ -41,7 +43,7 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback
 }
 
-function normalizeSettings(raw: unknown): SongSettings {
+function normalizeSettings(raw: unknown, bars: number): SongSettings {
   const d = defaultSettings()
   if (!isObject(raw)) return d
   return {
@@ -50,6 +52,7 @@ function normalizeSettings(raw: unknown): SongSettings {
     velocity: clamp(Math.round(asNumber(raw.velocity, d.velocity)), 1, 127),
     playGateNote: clamp(Math.round(asNumber(raw.playGateNote, d.playGateNote)), 0, 127),
     loop: typeof raw.loop === 'boolean' ? raw.loop : d.loop,
+    loopRange: normalizeLoopRange(raw.loopRange, bars),
   }
 }
 
@@ -140,7 +143,7 @@ export function normalizeSong(raw: unknown): Song {
     name: asString(raw.name, 'Untitled'),
     channels,
     sections,
-    settings: normalizeSettings(raw.settings),
+    settings: normalizeSettings(raw.settings, totalBars(sections)),
   }
 }
 

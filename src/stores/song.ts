@@ -25,15 +25,18 @@ import {
   createSong,
   generateId,
   nextFreeOutput,
+  normalizeLoopRange,
   stepCount,
+  totalBars,
   withStepSet,
   withStepToggled,
   type Channel,
+  type LoopRange,
   type Section,
   type Song,
   type SongSettings,
 } from '../core/song'
-import { buildTimeline, resolveTempos, totalDuration, totalSteps } from '../core/timing'
+import { buildTimeline, loopRangeSeconds, resolveTempos, totalDuration, totalSteps } from '../core/timing'
 
 /** Delay between the last edit and the autosave write. */
 export const AUTOSAVE_DEBOUNCE_MS = 250
@@ -69,6 +72,9 @@ export const useSongStore = defineStore('song', () => {
   const resolvedTempos = computed(() => resolveTempos(song.value.sections))
   const duration = computed(() => totalDuration(timeline.value))
   const stepTotal = computed(() => totalSteps(timeline.value))
+  const barTotal = computed(() => totalBars(song.value.sections))
+  /** The loop points in seconds, or null when the whole song plays. */
+  const loopSeconds = computed(() => loopRangeSeconds(timeline.value, song.value.settings.loopRange))
   const canAddChannel = computed(() => song.value.channels.length < MAX_CHANNELS)
 
   function touch() {
@@ -150,6 +156,7 @@ export const useSongStore = defineStore('song', () => {
     const index = song.value.sections.findIndex((s) => s.id === id)
     if (index < 0) return
     song.value.sections.splice(index, 1)
+    clampLoopRange()
     touch()
   }
 
@@ -187,7 +194,14 @@ export const useSongStore = defineStore('song', () => {
     }
     Object.assign(section, patch)
     section.steps = clampStepsToLength(section.steps, stepCount(section))
+    clampLoopRange()
     touch()
+  }
+
+  /** Keep the loop points inside the song after it has lost bars. */
+  function clampLoopRange() {
+    const settings = song.value.settings
+    settings.loopRange = normalizeLoopRange(settings.loopRange, barTotal.value)
   }
 
   // ---- steps ----------------------------------------------------------
@@ -227,6 +241,35 @@ export const useSongStore = defineStore('song', () => {
   function updateSettings(patch: Partial<SongSettings>) {
     const next = normalizeSong({ ...song.value, settings: { ...song.value.settings, ...patch } }).settings
     song.value.settings = next
+    touch()
+  }
+
+  // ---- loop points --------------------------------------------------------
+  /**
+   * Set the loop points to the bars from `start` up to but not including `end`, counted
+   * across the whole song (reversed or out-of-range values are put right; an empty range
+   * clears the points). Playback then stays inside them.
+   */
+  function setLoopRange(start: number, end: number) {
+    song.value.settings.loopRange = normalizeLoopRange({ start, end }, barTotal.value)
+    touch()
+  }
+
+  /** Loop a single bar. */
+  function setLoopBar(bar: number) {
+    setLoopRange(bar, bar + 1)
+  }
+
+  /** Stretch the loop points so they also cover `bar` (set them to that bar when there are none). */
+  function extendLoopRange(bar: number) {
+    const current: LoopRange | null = song.value.settings.loopRange
+    if (!current) return setLoopBar(bar)
+    setLoopRange(Math.min(current.start, bar), Math.max(current.end, bar + 1))
+  }
+
+  function clearLoopRange() {
+    if (!song.value.settings.loopRange) return
+    song.value.settings.loopRange = null
     touch()
   }
 
@@ -416,6 +459,8 @@ export const useSongStore = defineStore('song', () => {
     resolvedTempos,
     duration,
     stepTotal,
+    barTotal,
+    loopSeconds,
     canAddChannel,
     sectionById,
     channelById,
@@ -434,6 +479,10 @@ export const useSongStore = defineStore('song', () => {
     clearSection,
     clearChannel,
     updateSettings,
+    setLoopRange,
+    setLoopBar,
+    extendLoopRange,
+    clearLoopRange,
     rename,
     loadSong,
     newSong,
