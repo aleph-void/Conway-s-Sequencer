@@ -22,7 +22,9 @@ backend, and songs autosave to local storage.
 - **Play gate.** A MIDI note is held on for as long as the song is playing and
   released when it pauses or stops, so one module output can act as a run/stop
   gate. It defaults to note 99, the module's 64th output (its 64 outputs follow
-  notes 36–99), and can be changed in the module settings.
+  notes 36–99), and can be changed in the module settings. See
+  [Syncing Pam's Pro Workout](#syncing-pams-pro-workout) for a patch that uses
+  these two outputs to clock and run another module.
 - **Sections** with their own tempo, time signature, bar count and step
   resolution. Leave a section's tempo blank and it inherits the previous
   section's tempo. Reorder sections by dragging the ⋮⋮ grip (or focus it and
@@ -89,6 +91,53 @@ backend, and songs autosave to local storage.
   channel column narrows and the drawer starts closed so the grid is on
   screen. On touch screens the steps and controls are bigger, a tap draws a
   gate and a swipe scrolls the grid.
+
+## Syncing Pam's Pro Workout
+
+The x16 clock and the play gate exist so the module can drive other gear in
+time with the song. Here is how to run
+[ALM Pamela's PRO Workout](https://busycircuits.com/alm038/) from them, so
+Pam's outputs follow the song's tempo and start and stop with the transport.
+
+### Patch
+
+With the default base note (output 1 = note 36), the two sync outputs are the
+last two on the panel:
+
+| Conway's Game output | MIDI note | Carries        | Patch to on Pam's      |
+| -------------------- | --------- | -------------- | ---------------------- |
+| 63 (penultimate)     | 98        | x16 clock      | **CLK** CV input       |
+| 64 (last)            | 99        | Play gate      | **RUN** CV input       |
+
+Output 63 pulses 16 times per beat while the song plays and acts as Pam's
+external clock. Output 64 is held high for as long as the song plays and
+released when it pauses or stops, so Pam's runs and stops with the transport.
+
+The play gate note can be changed in the module settings; if you move it, patch
+whichever output now carries it to RUN instead. The Module view marks both the
+clock and the play gate on the panel picture, so it is the quickest way to
+check which jack is which.
+
+### Pam's settings
+
+In Pam's main settings (press and hold the encoder):
+
+| Setting                 | Value    | Why                                              |
+| ----------------------- | -------- | ------------------------------------------------ |
+| **Clock mode**          | **CV**   | Pam's follows the clock on its CLK input         |
+| **CV clock divisions**  | **16**   | The clock is 16 pulses per beat (sixteenths)     |
+| **RUN MODE**            | **RUN**  | The RUN input starts and stops Pam's as a gate   |
+
+With the clock divisions set to 16, Pam's reads sixteen pulses as one beat, so
+its BPM, divisions and multiplications line up with the tempo set in each
+section of the song, including tempo changes between sections. With RUN MODE
+set to RUN, Pam's starts when the play gate goes high and stops when it goes
+low, so pressing Play, Pause or Stop in the sequencer does the same on Pam's;
+any other RUN MODE (such as RESET) will not follow the transport.
+
+Set Pam's internal BPM aside: in CV clock mode the displayed tempo follows the
+incoming clock, and the sequencer decides it from the section's tempo and time
+signature.
 
 ## Browser support
 
