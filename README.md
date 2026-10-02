@@ -45,8 +45,9 @@ backend, and songs autosave to local storage.
 - **Song browser.** The "Songs" tab on the left edge slides out a drawer listing
   every song saved in this browser, most recently edited first. Pick one to
   load it and work on it (the choice is remembered across reloads), start a new
-  song, or delete one. "New" and "Import JSON" add a song to the browser rather
-  than replacing the one you have open.
+  song, duplicate one with ⧉ (the copy, named "… copy", opens), or delete one
+  with × after confirming in a dialog. "New" and "Import JSON" add a song to
+  the browser rather than replacing the one you have open.
 - **Transport.** Play, pause where the cursor is, resume from there, reset the
   cursor to the start (playback keeps going if it was running), stop, loop and
   panic. Space = play/pause, Esc = panic.

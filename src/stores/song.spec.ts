@@ -308,6 +308,52 @@ describe('useSongStore', () => {
       expect(readIndex(localStorage).entries.map((e) => e.id)).toEqual([store.currentId])
     })
 
+    it('duplicates a song into a new entry named after it and opens the copy', async () => {
+      vi.useFakeTimers()
+      const store = useSongStore()
+      store.rename('A')
+      const a = store.currentId
+      const sectionId = store.song.sections[0]!.id
+      const channelId = store.song.channels[0]!.id
+      store.toggleStep(sectionId, channelId, 3)
+
+      // The open song's pending edit is both flushed to it and part of the copy.
+      const copyId = store.duplicateSong(a)
+      expect(copyId).toBe(store.currentId)
+      expect(copyId).not.toBe(a)
+      expect(store.song.name).toBe('A copy')
+      expect(store.song.sections[0]!.steps[channelId]).toEqual([3])
+      expect(store.library.map((e) => e.name)).toEqual(['A copy', 'A'])
+      expect(localStorage.getItem(songKey(a))).toContain('"A"')
+      expect(storedSong(store)).toContain('"A copy"')
+      await vi.advanceTimersByTimeAsync(300)
+      expect(store.saveState).toBe('idle')
+
+      // The copy shares nothing with the original.
+      store.toggleStep(sectionId, channelId, 5)
+      expect(store.selectSong(a)).toBe(true)
+      expect(store.song.sections[0]!.steps[channelId]).toEqual([3])
+
+      // A song that is not open is copied from storage.
+      expect(store.duplicateSong(copyId!)).toBe(store.currentId)
+      expect(store.song.name).toBe('A copy copy')
+      expect(store.song.sections[0]!.steps[channelId]).toEqual([3, 5])
+      expect(store.library).toHaveLength(3)
+
+      // A blank name copies as Untitled.
+      store.rename('   ')
+      store.duplicateSong(store.currentId)
+      expect(store.song.name).toBe('Untitled copy')
+
+      // A song that vanished is dropped from the library and nothing opens.
+      localStorage.removeItem(songKey(a))
+      const before = store.currentId
+      expect(store.duplicateSong(a)).toBeNull()
+      expect(store.currentId).toBe(before)
+      expect(store.library.map((e) => e.id)).not.toContain(a)
+      expect(store.library).toHaveLength(3)
+    })
+
     it('deletes songs, opening the most recent remaining one or a fresh song', async () => {
       vi.useFakeTimers()
       const store = useSongStore()
@@ -421,6 +467,9 @@ describe('useSongStore', () => {
       expect(store.library).toEqual([])
       store.rename('Nowhere')
       store.save()
+      expect(store.duplicateSong('x')).toBeNull()
+      expect(store.duplicateSong(store.currentId)).toBe(store.currentId)
+      expect(store.song.name).toBe('Nowhere copy')
       store.newSong()
       expect(store.library).toEqual([])
       expect(store.selectSong('x')).toBe(false)

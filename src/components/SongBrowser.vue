@@ -3,6 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { LibraryEntry } from '../core/library'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 const store = useSongStore()
 const transport = useTransportStore()
@@ -10,6 +11,8 @@ const open = ref(false)
 const tab = ref<HTMLButtonElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
 const panelId = 'song-browser-panel'
+/** The song whose deletion is awaiting confirmation, and the button that asked. */
+const pendingDelete = ref<{ entry: LibraryEntry; trigger: HTMLElement | null } | null>(null)
 
 async function show() {
   open.value = true
@@ -55,11 +58,33 @@ function select(entry: LibraryEntry) {
   hide(true)
 }
 
-function remove(entry: LibraryEntry) {
-  const prompt = `Delete "${displayName(entry)}" from this browser? This cannot be undone.`
-  if (typeof window !== 'undefined' && !window.confirm(prompt)) return
+function duplicate(entry: LibraryEntry) {
+  transport.stop()
+  if (store.duplicateSong(entry.id) === null) return
+  hide(true)
+}
+
+function askRemove(entry: LibraryEntry, event: Event) {
+  pendingDelete.value = { entry, trigger: event.currentTarget as HTMLElement | null }
+}
+
+// Focus moves back into the drawer only after it has re-rendered as no longer inert.
+async function cancelRemove() {
+  const trigger = pendingDelete.value?.trigger
+  pendingDelete.value = null
+  await nextTick()
+  if (trigger?.isConnected) trigger.focus()
+  else closeButton.value?.focus()
+}
+
+async function confirmRemove() {
+  const entry = pendingDelete.value?.entry
+  pendingDelete.value = null
+  if (!entry) return
   if (entry.id === store.currentId) transport.stop()
   store.deleteSong(entry.id)
+  await nextTick()
+  closeButton.value?.focus()
 }
 
 function create() {
@@ -69,7 +94,8 @@ function create() {
 }
 
 function onKey(event: KeyboardEvent) {
-  if (event.key === 'Escape' && open.value) hide(true)
+  // While the delete box is up it owns Escape (and stops it reaching here).
+  if (event.key === 'Escape' && open.value && !pendingDelete.value) hide(true)
 }
 
 onMounted(() => window.addEventListener('keydown', onKey))
@@ -79,7 +105,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 <template>
   <div class="song-browser" :class="{ open }" data-testid="song-browser" :data-open="open">
     <div v-if="open" class="backdrop" data-testid="song-browser-backdrop" @click="hide()" />
-    <aside class="drawer">
+    <aside class="drawer" :inert="pendingDelete !== null">
       <button
         ref="tab"
         class="tab"
@@ -144,12 +170,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               </span>
             </button>
             <button
+              class="icon"
+              type="button"
+              :aria-label="`Duplicate ${displayName(entry)}`"
+              title="Duplicate (opens the copy)"
+              data-testid="song-duplicate"
+              @click="duplicate(entry)"
+            >
+              ⧉
+            </button>
+            <button
               class="icon danger"
               type="button"
               :aria-label="`Delete ${displayName(entry)}`"
               title="Delete from this browser"
               data-testid="song-delete"
-              @click="remove(entry)"
+              @click="askRemove(entry, $event)"
             >
               ×
             </button>
@@ -157,6 +193,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         </ul>
       </div>
     </aside>
+    <ConfirmDialog
+      v-if="pendingDelete"
+      :title="`Delete “${displayName(pendingDelete.entry)}”?`"
+      confirm-label="Delete"
+      danger
+      @confirm="confirmRemove"
+      @cancel="cancelRemove"
+    >
+      <p>This removes the song from this browser. It cannot be undone.</p>
+      <p v-if="pendingDelete.entry.id === store.currentId" data-testid="confirm-current-note">
+        It is the open song, so
+        {{ store.library.length > 1 ? 'the most recently edited remaining song' : 'a fresh song' }} will open
+        instead.
+      </p>
+    </ConfirmDialog>
   </div>
 </template>
 
