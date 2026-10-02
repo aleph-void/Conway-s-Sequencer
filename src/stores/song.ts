@@ -335,6 +335,31 @@ export const useSongStore = defineStore('song', () => {
   }
 
   /**
+   * Copy a saved song into a new library entry named "<name> copy" and open
+   * the copy, keeping the original saved. Copying the open song includes its
+   * pending edits. Returns the copy's id, or null when the song is gone or
+   * unreadable (its entry is then dropped from the library).
+   */
+  function duplicateSong(id: string): string | null {
+    let source: Song | null
+    if (id === currentId.value) {
+      source = song.value
+    } else {
+      if (!storage) return null
+      source = readSong(storage, id)
+      if (!source) {
+        forget(id)
+        return null
+      }
+    }
+    // Round-tripping through JSON gives a deep copy with nothing shared with the original.
+    const copy = parseSong(serializeSong(source))
+    copy.name = `${source.name.trim() || 'Untitled'} copy`
+    openNew(copy)
+    return currentId.value
+  }
+
+  /**
    * Delete a saved song from this browser. Deleting the open song opens the
    * most recently edited remaining one, or a fresh song when none is left;
    * its own pending edits are discarded rather than flushed.
@@ -487,6 +512,7 @@ export const useSongStore = defineStore('song', () => {
     loadSong,
     newSong,
     selectSong,
+    duplicateSong,
     deleteSong,
     exportJson,
     importJson,

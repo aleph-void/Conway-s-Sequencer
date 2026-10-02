@@ -49,13 +49,14 @@ src/
     serialization.ts  JSON export/import with validation + clamping
     library.ts     the song library in localStorage: index + one key per song
   stores/          Pinia
-    song.ts        the document + all edits + autosave + library (open/new/delete)
+    song.ts        the document + all edits + autosave + library (open/new/duplicate/delete)
     midi.ts        Web MIDI access, outputs, selection, send(), panic()
     transport.ts   play/stop/position, wires compile + scheduler + midi
   components/      Vue SFCs, thin over the stores
     AppHeader, MidiPanel, TransportBar, SettingsPanel,
     SectionsPanel, SequencerGrid (+ ChannelHeader), SongIO,
     SongBrowser (slide-out drawer listing the saved songs),
+    ConfirmDialog (modal confirmation box, used before deleting a song),
     ModuleView (live picture of the module's 64 outputs)
 tests/e2e/         Playwright specs + fake Web MIDI fixture
 ```
@@ -103,7 +104,7 @@ Design choices worth knowing:
 | Layer | Tool | What it proves |
 | --- | --- | --- |
 | `core/*` | Vitest (node-ish, jsdom env) | Tempo inheritance, step/time math, note mapping, compile output (times, ordering, held/merged gates, mute, settings), scheduler behaviour with fake timers (look-ahead, loop wrap, stop → note-offs, live reload), JSON validation/clamping. |
-| `stores/*` | Vitest + Pinia | Every edit action and its invariants (62-channel cap, step trimming, id uniqueness), autosave/debounce/flush, the song library (open, new, delete, migration, storage failures), MIDI access states and hot-plug, transport ↔ scheduler ↔ MIDI integration. |
+| `stores/*` | Vitest + Pinia | Every edit action and its invariants (62-channel cap, step trimming, id uniqueness), autosave/debounce/flush, the song library (open, new, duplicate, delete, migration, storage failures), MIDI access states and hot-plug, transport ↔ scheduler ↔ MIDI integration. |
 | `components/*` | Vitest + @vue/test-utils | Rendering, user interactions (click/drag/keyboard painting, inputs, buttons), empty and error states, keyboard shortcuts. |
 | App | Playwright, headless Chromium | Real DOM, real pointer drags, real `localStorage`, real downloads; MIDI messages asserted byte-for-byte via the fake port log, including timestamps 500 ms apart for steps 4 apart at 120 BPM. |
 

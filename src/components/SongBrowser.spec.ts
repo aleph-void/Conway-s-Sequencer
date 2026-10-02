@@ -17,6 +17,12 @@ describe('SongBrowser', () => {
     return mount(SongBrowser, { attachTo: document.body })
   }
 
+  /** jsdom has no `inert` property, so Vue writes the binding as an attribute ("true" / "false"). */
+  function isInert(el: { attributes(key: string): string | undefined }) {
+    const value = el.attributes('inert')
+    return value !== undefined && value !== 'false'
+  }
+
   it('slides open from its tab, closes from the close button, backdrop and Escape', async () => {
     const wrapper = mountBrowser()
     const root = wrapper.get('[data-testid="song-browser"]')
@@ -129,7 +135,7 @@ describe('SongBrowser', () => {
     wrapper.unmount()
   })
 
-  it('deletes a song after confirmation', async () => {
+  it('deletes a song after confirming in a modal', async () => {
     const store = useSongStore()
     const transport = useTransportStore()
     const stop = vi.spyOn(transport, 'stop')
@@ -138,24 +144,98 @@ describe('SongBrowser', () => {
     store.newSong()
     store.rename('Beta')
     store.save()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const wrapper = mountBrowser()
+    const root = wrapper.get('[data-testid="song-browser"]')
+    const drawer = wrapper.get('.drawer')
     await wrapper.get('[data-testid="song-browser-tab"]').trigger('click')
-    await wrapper.findAll('[data-testid="song-delete"]')[1]!.trigger('click')
-    expect(confirm).toHaveBeenLastCalledWith('Delete "Alpha" from this browser? This cannot be undone.')
+    expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(false)
+    expect(isInert(drawer)).toBe(false)
+
+    // Asking names the song, focuses Cancel and puts the drawer behind the box.
+    const deleteAlpha = wrapper.findAll('[data-testid="song-delete"]')[1]!
+    await deleteAlpha.trigger('click')
+    await nextTick()
+    const dialog = wrapper.get('[data-testid="confirm-dialog"]')
+    expect(dialog.get('[role="dialog"]').text()).toContain('Delete “Alpha”?')
+    expect(dialog.find('[data-testid="confirm-current-note"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(dialog.get('[data-testid="confirm-cancel"]').element)
+    expect(isInert(drawer)).toBe(true)
     expect(store.library).toHaveLength(2)
 
-    confirm.mockReturnValue(true)
-    await wrapper.findAll('[data-testid="song-delete"]')[1]!.trigger('click')
+    // Cancel keeps the song and hands focus back to the button that asked.
+    await dialog.get('[data-testid="confirm-cancel"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(false)
+    expect(isInert(drawer)).toBe(false)
+    expect(store.library).toHaveLength(2)
+    expect(document.activeElement).toBe(deleteAlpha.element)
+    expect(root.attributes('data-open')).toBe('true')
+
+    // Escape cancels the box without closing the drawer behind it.
+    await deleteAlpha.trigger('click')
+    await wrapper.get('[data-testid="confirm-cancel"]').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(false)
+    expect(root.attributes('data-open')).toBe('true')
+    expect(store.library).toHaveLength(2)
+
+    // So does clicking the backdrop.
+    await deleteAlpha.trigger('click')
+    await wrapper.get('[data-testid="confirm-backdrop"]').trigger('click')
+    expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(false)
+    expect(store.library).toHaveLength(2)
+
+    // Confirming deletes it; a song that is not open leaves the transport alone.
+    await deleteAlpha.trigger('click')
+    await wrapper.get('[data-testid="confirm-accept"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(false)
     expect(store.library.map((e) => e.name)).toEqual(['Beta'])
     expect(stop).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="song-browser-close"]').element)
 
-    // Deleting the open song stops playback and opens a fresh one.
+    // Deleting the open song says what opens next, stops playback and opens a fresh song.
     await wrapper.findAll('[data-testid="song-delete"]')[0]!.trigger('click')
+    expect(wrapper.get('[data-testid="confirm-current-note"]').text()).toContain('a fresh song will open')
+    await wrapper.get('[data-testid="confirm-accept"]').trigger('click')
     expect(stop).toHaveBeenCalledTimes(1)
     expect(store.song.name).toBe('Untitled')
     expect(wrapper.findAll('[data-testid="song-entry"]')).toHaveLength(1)
-    confirm.mockRestore()
+
+    // With other songs saved, the note promises the most recent of them.
+    store.newSong()
+    store.save()
+    await nextTick()
+    await wrapper.get('.song.current [data-testid="song-delete"]').trigger('click')
+    expect(wrapper.get('[data-testid="confirm-current-note"]').text()).toContain('most recently edited remaining song')
+    wrapper.unmount()
+  })
+
+  it('duplicates a song, opening the copy and closing the drawer', async () => {
+    const store = useSongStore()
+    const transport = useTransportStore()
+    const stop = vi.spyOn(transport, 'stop')
+    store.rename('Alpha')
+    store.save()
+    const alpha = store.currentId
+    store.newSong()
+    store.rename('Beta')
+    store.save()
+    const wrapper = mountBrowser()
+    await wrapper.get('[data-testid="song-browser-tab"]').trigger('click')
+    await wrapper.get(`[data-song-id="${alpha}"] [data-testid="song-duplicate"]`).trigger('click')
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(store.song.name).toBe('Alpha copy')
+    expect(store.currentId).not.toBe(alpha)
+    expect(store.library.map((e) => e.name)).toEqual(['Alpha copy', 'Beta', 'Alpha'])
+    expect(wrapper.get('[data-testid="song-browser"]').attributes('data-open')).toBe('false')
+
+    // A song that vanished from storage is dropped and the drawer stays open.
+    localStorage.removeItem(songKey(alpha))
+    await wrapper.get('[data-testid="song-browser-tab"]').trigger('click')
+    await wrapper.get(`[data-song-id="${alpha}"] [data-testid="song-duplicate"]`).trigger('click')
+    expect(store.song.name).toBe('Alpha copy')
+    expect(wrapper.get('[data-testid="song-browser"]').attributes('data-open')).toBe('true')
+    expect(wrapper.findAll('[data-testid="song-entry"]')).toHaveLength(2)
     wrapper.unmount()
   })
 
