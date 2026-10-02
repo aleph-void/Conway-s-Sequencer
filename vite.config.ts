@@ -35,6 +35,9 @@ export default defineConfig({
         // Control the page from the first visit so runtime caching (fonts) starts right away.
         clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // The social-media preview card is only ever fetched by link scrapers; precaching it
+        // would just make every install download a large PNG the app never shows.
+        globIgnores: ['**/og-image.png'],
         // Web fonts come from Google Fonts: cache the stylesheet and font files once seen so
         // the app keeps its typography offline (it falls back to system fonts until then).
         runtimeCaching: [

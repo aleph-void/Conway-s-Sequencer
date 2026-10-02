@@ -10,6 +10,31 @@ test.describe('shell', () => {
     await expect(page.getByTestId('sections-table').locator('tbody tr')).toHaveCount(1)
   })
 
+  test('carries Open Graph and Twitter Card metadata for link previews', async ({ midiPage: page }) => {
+    const origin = 'https://conways-sequencer.alephvoid.com'
+    const meta = (selector: string) => page.locator(`meta[${selector}]`).getAttribute('content')
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${origin}/`)
+    expect(await meta('property="og:type"')).toBe('website')
+    expect(await meta('property="og:url"')).toBe(`${origin}/`)
+    expect(await meta('property="og:title"')).toBe("Conway's Sequencer")
+    expect(await meta('property="og:description"')).toMatch(/Conway's Game/)
+    expect(await meta('property="og:image"')).toBe(`${origin}/og-image.png`)
+    expect(await meta('property="og:image:width"')).toBe('1200')
+    expect(await meta('property="og:image:height"')).toBe('630')
+    expect(await meta('property="og:image:alt"')).toBeTruthy()
+    expect(await meta('name="twitter:card"')).toBe('summary_large_image')
+    expect(await meta('name="twitter:title"')).toBe("Conway's Sequencer")
+    expect(await meta('name="twitter:image"')).toBe(`${origin}/og-image.png`)
+    expect(await meta('name="twitter:image:alt"')).toBeTruthy()
+
+    // Scrapers fetch the card from the same path on whatever host serves the build.
+    const image = await page.request.get(new URL('/og-image.png', page.url()).toString())
+    expect(image.ok()).toBe(true)
+    expect(image.headers()['content-type']).toMatch(/^image\/png/)
+    expect((await image.body()).length).toBeGreaterThan(10_000)
+  })
+
   test('gives the grid most of the viewport and lets the settings drawer collapse', async ({ midiPage: page }) => {
     const viewport = page.viewportSize()!
     const gridPanel = page.getByTestId('grid-panel')
