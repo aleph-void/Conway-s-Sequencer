@@ -3,8 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { compileSong, windowEvents } from '../core/compile'
 import { noteOff, noteOn } from '../core/midi'
 import { Scheduler } from '../core/scheduler'
-import type { LoopRange } from '../core/song'
-import { locate, type Position } from '../core/timing'
+import { clamp, type LoopRange } from '../core/song'
+import { locate, stepStartTime, type Position } from '../core/timing'
 import { useMidiStore } from './midi'
 import { useSongStore } from './song'
 
@@ -178,6 +178,32 @@ export const useTransportStore = defineStore('transport', () => {
     paused.value = false
   }
 
+  /**
+   * Put the cursor at `seconds` from song start. Stopped or paused, it just moves there (and
+   * sits "paused", so it shows, unless that is the start). Playing, playback jumps there and
+   * carries on; a target outside the loop points, which playback cannot reach, pauses there.
+   */
+  function seek(seconds: number) {
+    const at = clamp(seconds, 0, songStore.duration)
+    if (playing.value) {
+      const offset = at - loadedStart
+      if (offset >= 0 && offset < loadedDuration) {
+        scheduler.start(offset)
+        positionSeconds.value = at
+      } else {
+        halt(at)
+      }
+      return
+    }
+    positionSeconds.value = at
+    paused.value = at > loopStart.value
+  }
+
+  /** Put the cursor at the start of a step on the whole-song step axis. */
+  function seekToStep(globalStep: number) {
+    seek(stepStartTime(songStore.timeline, globalStep))
+  }
+
   /** Stop and return the cursor to the start. */
   function stop() {
     halt(loopStart.value)
@@ -213,5 +239,20 @@ export const useTransportStore = defineStore('transport', () => {
     if (!playing.value && !paused.value) positionSeconds.value = start
   })
 
-  return { playing, paused, positionSeconds, position, currentStep, play, pause, resume, reset, stop, toggle, panic }
+  return {
+    playing,
+    paused,
+    positionSeconds,
+    position,
+    currentStep,
+    play,
+    pause,
+    resume,
+    reset,
+    seek,
+    seekToStep,
+    stop,
+    toggle,
+    panic,
+  }
 })

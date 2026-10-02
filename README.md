@@ -31,6 +31,21 @@ backend, and songs autosave to local storage.
   press ↑/↓), and duplicate one, notes included, with ⧉.
 - **Draw gates** by clicking or click-dragging across the grid; Enter/Space
   toggles the focused cell for keyboard users.
+- **Select, copy and paste blocks.** Shift+drag across the grid selects a block
+  of cells spanning as many tracks and steps as the drag covers (Shift+Enter or
+  Shift+Space stretches the selection to the focused cell for keyboard users).
+  Ctrl/Cmd+C copies the block, Ctrl/Cmd+X cuts it, Delete clears it, and
+  Ctrl/Cmd+V pastes it where the cursor is: its first step lands on the
+  cursor's step and its first track on the selected track (or the one it came
+  from), replacing what those cells held. The same commands sit above the grid
+  as buttons, and the clipboard survives switching songs, so a block can be
+  carried from one song to another. Selection needs a mouse or pen; on a touch
+  screen a drag scrolls the grid.
+- **Place the cursor** by clicking a section header or a bar number: the cursor
+  goes to the step under the pointer (Enter/Space on a focused header puts it at
+  the header's start). While playing, playback jumps there and carries on; while
+  stopped, the transport shows the position as paused, so Play resumes from it
+  and a paste lands on it.
 - **A colour per track.** Every channel row draws its gates, and the swatch beside
   its name, in its own hue, so neighbouring tracks are easy to tell apart at a
   glance. Colours follow row position: twelve well-separated hues, then the
@@ -60,7 +75,8 @@ backend, and songs autosave to local storage.
   the clock or play gate off the panel, and is remembered across reloads.
 - **Transport.** Play, pause where the cursor is, resume from there, reset the
   cursor to the start (playback keeps going if it was running), stop, loop and
-  panic. Space = play/pause, Esc = panic.
+  panic. Space = play/pause, Esc = panic. The cursor can also be placed by
+  clicking a section header or a bar number in the grid (see above).
 - **Loop points.** The Loop strip under the bar numbers sets a range of bars to
   listen to on their own: click a bar to loop just that bar, drag across bars for
   a range, Shift+click (or Shift+Enter) to extend it, ✕ to clear it. Playback

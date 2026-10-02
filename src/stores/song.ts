@@ -11,6 +11,7 @@ import {
   type LibraryEntry,
   type LibraryIndex,
 } from '../core/library'
+import { clearRange, readBlock, writeBlock, type Block, type CellRange } from '../core/clipboard'
 import { normalizeSong, parseSong, serializeSong } from '../core/serialization'
 import {
   MAX_BARS,
@@ -235,6 +236,29 @@ export const useSongStore = defineStore('song', () => {
   function clearChannel(channelId: string) {
     for (const section of song.value.sections) delete section.steps[channelId]
     touch()
+  }
+
+  // ---- blocks (selection, clipboard) -------------------------------------
+  /** Copy the gates inside a rectangle of cells out of the song; see `core/clipboard.ts`. */
+  function copyBlock(range: CellRange): Block {
+    return readBlock(song.value, timeline.value, range)
+  }
+
+  /**
+   * Put a block down with its corner on channel `channelStart`, step `stepStart` (whole-song
+   * step axis), replacing the cells it covers. Returns the range written, null for none.
+   */
+  function pasteBlock(block: Block, channelStart: number, stepStart: number): CellRange | null {
+    const written = writeBlock(song.value, timeline.value, block, channelStart, stepStart)
+    if (written) touch()
+    return written
+  }
+
+  /** Clear every gate inside a rectangle of cells. Returns the range cleared, null for none. */
+  function clearBlock(range: CellRange): CellRange | null {
+    const cleared = clearRange(song.value, timeline.value, range)
+    if (cleared) touch()
+    return cleared
   }
 
   // ---- settings / whole-song --------------------------------------------
@@ -503,6 +527,9 @@ export const useSongStore = defineStore('song', () => {
     setStep,
     clearSection,
     clearChannel,
+    copyBlock,
+    pasteBlock,
+    clearBlock,
     updateSettings,
     setLoopRange,
     setLoopBar,

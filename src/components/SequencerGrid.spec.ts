@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { useEditorStore } from '../stores/editor'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
 import { useUiStore } from '../stores/ui'
@@ -189,6 +190,222 @@ describe('SequencerGrid', () => {
     for (const c of [...store.song.channels]) store.removeChannel(c.id)
     const again = mount(SequencerGrid)
     expect(again.text()).toContain('Add a channel')
+  })
+
+  describe('selection and clipboard', () => {
+    const cell = (wrapper: ReturnType<typeof mount>, c: number, s: number, section = 0) =>
+      wrapper.get(`[data-testid="cell-${c}-${section}-${s}"]`)
+    const selected = (wrapper: ReturnType<typeof mount>) =>
+      wrapper.findAll('.cell.selected').map((c) => c.attributes('data-testid'))
+    const key = (init: KeyboardEventInit) => {
+      const event = new KeyboardEvent('keydown', { ...init, cancelable: true })
+      window.dispatchEvent(event)
+      return event
+    }
+
+    it('selects a block with Shift+drag across tracks without painting', async () => {
+      const store = useSongStore()
+      const editor = useEditorStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      expect(wrapper.find('[data-testid="selection"]').exists()).toBe(false)
+
+      await cell(wrapper, 1, 2).trigger('pointerdown', { button: 0, buttons: 1, shiftKey: true })
+      expect(store.song.sections[0]!.steps).toEqual({})
+      expect(editor.selection).toEqual({ channelStart: 1, channelEnd: 2, stepStart: 2, stepEnd: 3 })
+      expect(selected(wrapper)).toEqual(['cell-1-0-2'])
+      expect(wrapper.get('[data-testid="selection-size"]').text()).toBe('1 track × 1 step selected')
+
+      await cell(wrapper, 2, 4).trigger('pointerenter', { buttons: 1 })
+      expect(editor.selection).toEqual({ channelStart: 1, channelEnd: 3, stepStart: 2, stepEnd: 5 })
+      expect(selected(wrapper)).toEqual(['cell-1-0-2', 'cell-1-0-3', 'cell-1-0-4', 'cell-2-0-2', 'cell-2-0-3', 'cell-2-0-4'])
+      expect(wrapper.get('[data-testid="selection-size"]').text()).toBe('2 tracks × 3 steps selected')
+      // Dragging back past the anchor flips the rectangle around it.
+      await cell(wrapper, 0, 0).trigger('pointerenter', { buttons: 1 })
+      expect(editor.selection).toEqual({ channelStart: 0, channelEnd: 2, stepStart: 0, stepEnd: 3 })
+      expect(store.song.sections[0]!.steps).toEqual({})
+
+      // Releasing the pointer ends the drag; hovering no longer stretches it.
+      window.dispatchEvent(new Event('pointerup'))
+      await cell(wrapper, 5, 9).trigger('pointerenter', { buttons: 1 })
+      expect(editor.selection).toEqual({ channelStart: 0, channelEnd: 2, stepStart: 0, stepEnd: 3 })
+
+      // A plain press paints as before and leaves the selection alone; the ✕ clears it.
+      await cell(wrapper, 5, 9).trigger('pointerdown', { button: 0, buttons: 1 })
+      expect(store.song.sections[0]!.steps[store.song.channels[5]!.id]).toEqual([9])
+      expect(editor.selection).not.toBeNull()
+      window.dispatchEvent(new Event('pointerup'))
+      await wrapper.get('[data-testid="clear-selection"]').trigger('click')
+      expect(editor.selection).toBeNull()
+      expect(wrapper.find('[data-testid="selection"]').exists()).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('selects and stretches with Shift+Enter or Shift+Space on a cell', async () => {
+      const store = useSongStore()
+      const editor = useEditorStore()
+      const wrapper = mount(SequencerGrid)
+      await cell(wrapper, 3, 8).trigger('keydown.enter', { shiftKey: true })
+      expect(editor.selection).toEqual({ channelStart: 3, channelEnd: 4, stepStart: 8, stepEnd: 9 })
+      await cell(wrapper, 4, 11).trigger('keydown.space', { shiftKey: true })
+      expect(editor.selection).toEqual({ channelStart: 3, channelEnd: 5, stepStart: 8, stepEnd: 12 })
+      expect(store.song.sections[0]!.steps).toEqual({})
+      // Without Shift the keys still toggle the cell.
+      await cell(wrapper, 4, 11).trigger('keydown.enter')
+      expect(store.song.sections[0]!.steps[store.song.channels[4]!.id]).toEqual([11])
+      wrapper.unmount()
+    })
+
+    it('copies, cuts, deletes and pastes at the cursor with the buttons', async () => {
+      const store = useSongStore()
+      const transport = useTransportStore()
+      const editor = useEditorStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const steps = (c: number) => store.song.sections[0]!.steps[store.song.channels[c]!.id] ?? []
+      store.setStep(store.song.sections[0]!.id, store.song.channels[0]!.id, 1, true)
+      store.setStep(store.song.sections[0]!.id, store.song.channels[1]!.id, 0, true)
+      editor.selectCell({ channel: 0, step: 0 })
+      editor.extendTo({ channel: 1, step: 1 })
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('[data-testid="paste"]').exists()).toBe(false)
+
+      await wrapper.get('[data-testid="copy"]').trigger('click')
+      expect(editor.clipboard).toEqual({ channels: 2, steps: 2, rows: [[1], [0]] })
+      const paste = wrapper.get('[data-testid="paste"]')
+      expect(paste.attributes('title')).toContain('(2 × 2) at the cursor: A bar 1 step 1 (Ctrl+V)')
+
+      transport.seekToStep(20)
+      await wrapper.vm.$nextTick()
+      expect(wrapper.get('[data-testid="paste"]').attributes('title')).toContain('at the cursor: A bar 2 step 5')
+      await wrapper.get('[data-testid="paste"]').trigger('click')
+      expect(steps(0)).toEqual([1, 21])
+      expect(steps(1)).toEqual([0, 20])
+      expect(selected(wrapper)).toEqual(['cell-0-0-20', 'cell-0-0-21', 'cell-1-0-20', 'cell-1-0-21'])
+
+      await wrapper.get('[data-testid="delete-selection"]').trigger('click')
+      expect(steps(0)).toEqual([1])
+      expect(steps(1)).toEqual([0])
+      expect(editor.selection).toEqual({ channelStart: 0, channelEnd: 2, stepStart: 20, stepEnd: 22 })
+
+      editor.selectCell({ channel: 1, step: 0 })
+      await wrapper.vm.$nextTick()
+      await wrapper.get('[data-testid="cut"]').trigger('click')
+      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]] })
+      expect(steps(1)).toEqual([])
+      wrapper.unmount()
+    })
+
+    it('answers Ctrl+C, Ctrl+X, Ctrl+V and Delete outside text fields', async () => {
+      const store = useSongStore()
+      const transport = useTransportStore()
+      const editor = useEditorStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const steps = (c: number) => store.song.sections[0]!.steps[store.song.channels[c]!.id] ?? []
+      store.setStep(store.song.sections[0]!.id, store.song.channels[2]!.id, 3, true)
+
+      // Nothing selected and nothing copied: the keys are left to the browser.
+      expect(key({ key: 'c', ctrlKey: true }).defaultPrevented).toBe(false)
+      expect(key({ key: 'v', ctrlKey: true }).defaultPrevented).toBe(false)
+      expect(key({ key: 'Delete' }).defaultPrevented).toBe(false)
+
+      editor.selectCell({ channel: 2, step: 3 })
+      expect(key({ key: 'c', metaKey: true }).defaultPrevented).toBe(true)
+      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]] })
+      transport.seekToStep(10)
+      expect(key({ key: 'V', ctrlKey: true }).defaultPrevented).toBe(true)
+      expect(steps(2)).toEqual([3, 10])
+      expect(key({ key: 'Backspace' }).defaultPrevented).toBe(true)
+      expect(steps(2)).toEqual([3])
+      editor.selectCell({ channel: 2, step: 3 })
+      expect(key({ key: 'x', ctrlKey: true }).defaultPrevented).toBe(true)
+      expect(steps(2)).toEqual([])
+      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]] })
+
+      // Other modifier combinations, and keys typed into an input, are not for the grid.
+      expect(key({ key: 'v', ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(false)
+      expect(key({ key: 'v', ctrlKey: true, altKey: true }).defaultPrevented).toBe(false)
+      expect(steps(2)).toEqual([])
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      const typed = new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, cancelable: true, bubbles: true })
+      input.dispatchEvent(typed)
+      expect(typed.defaultPrevented).toBe(false)
+      expect(steps(2)).toEqual([])
+      input.remove()
+
+      // Unmounting drops the listener.
+      wrapper.unmount()
+      editor.selectCell({ channel: 2, step: 3 })
+      expect(key({ key: 'c', ctrlKey: true }).defaultPrevented).toBe(false)
+    })
+  })
+
+  describe('cursor placement', () => {
+    /** Give a header a layout so a click lands on the step under the pointer. */
+    function layOut(el: Element, rect: { left: number; top: number; width: number; height: number }) {
+      Object.defineProperty(el, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({ ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height }),
+      })
+    }
+
+    it('puts the cursor at the step clicked on a section header or a bar number', async () => {
+      const store = useSongStore()
+      const transport = useTransportStore()
+      store.addSection({ bars: 2 })
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const header = wrapper.get('[data-testid="grid-section-1"]')
+      expect(header.attributes('role')).toBe('button')
+      // Without a layout (jsdom), a click is the start of the header.
+      await header.trigger('click')
+      expect(transport.currentStep).toBe(64)
+      expect(transport.paused).toBe(true)
+
+      // Section 2 spans 32 steps over 640 px: a click 330 px in is its 17th step.
+      layOut(header.element, { left: 100, top: 0, width: 640, height: 32 })
+      await header.trigger('click', { clientX: 430, clientY: 10 })
+      expect(transport.currentStep).toBe(64 + 16)
+      // Clamped to the header's own steps when the pointer is past its edge.
+      await header.trigger('click', { clientX: 2000, clientY: 10 })
+      expect(transport.currentStep).toBe(64 + 31)
+
+      const bar = wrapper.get('[data-testid="bar-label-5"]')
+      expect(bar.attributes('aria-label')).toBe('Put the cursor at Section 2 bar 2')
+      layOut(bar.element, { left: 50, top: 0, width: 160, height: 18 })
+      await bar.trigger('click', { clientX: 95, clientY: 10 })
+      expect(transport.currentStep).toBe(64 + 16 + 4)
+
+      // Enter and Space put it at the start.
+      await bar.trigger('keydown.space')
+      expect(transport.currentStep).toBe(64 + 16)
+      await header.trigger('keydown.enter')
+      expect(transport.currentStep).toBe(64)
+      await wrapper.get('[data-testid="grid-section-0"]').trigger('keydown.enter')
+      expect(transport.currentStep).toBe(-1)
+      expect(transport.paused).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('reads the pointer along the time axis of each orientation', async () => {
+      const transport = useTransportStore()
+      const ui = useUiStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const header = wrapper.get('[data-testid="grid-section-0"]')
+      // 64 steps over 640 px (or 640 px tall when vertical): 10 px per step.
+      layOut(header.element, { left: 100, top: 100, width: 640, height: 640 })
+
+      await header.trigger('click', { clientX: 125, clientY: 725 })
+      expect(transport.currentStep).toBe(2)
+      ui.setTrackOrientation('rtl')
+      await header.trigger('click', { clientX: 125, clientY: 725 })
+      expect(transport.currentStep).toBe(61)
+      ui.setTrackOrientation('ttb')
+      await header.trigger('click', { clientX: 125, clientY: 725 })
+      expect(transport.currentStep).toBe(62)
+      ui.setTrackOrientation('btt')
+      await header.trigger('click', { clientX: 125, clientY: 725 })
+      expect(transport.currentStep).toBe(1)
+      wrapper.unmount()
+    })
   })
 
   describe('track orientation', () => {

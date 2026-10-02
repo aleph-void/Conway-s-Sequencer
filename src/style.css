@@ -42,6 +42,8 @@
   --cell-line: #0a0a0f;
   --cell-on-edge: rgba(0, 0, 0, 0.35);
   --playhead: var(--accent-glow);
+  /* Wash laid over the cells of the selected block. */
+  --selection: rgba(167, 139, 250, 0.38);
   /*
    * Track colours. Each channel row sets its own --track-hue (see core/colors.ts) and the
    * grid builds its gate colours as oklch(L C hue) from these, so every track is a different

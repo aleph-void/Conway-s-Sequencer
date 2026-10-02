@@ -236,6 +236,42 @@ describe('useTransportStore', () => {
     expect(transport.positionSeconds).toBe(0)
   })
 
+  it('seek puts the cursor on a step and shows it as paused', () => {
+    const transport = useTransportStore()
+    transport.seekToStep(20)
+    expect(transport.playing).toBe(false)
+    expect(transport.paused).toBe(true)
+    expect(transport.positionSeconds).toBe(2.5)
+    expect(transport.currentStep).toBe(20)
+    // Playing picks up from there.
+    transport.play()
+    expect(transport.positionSeconds).toBe(2.5)
+    transport.stop()
+    // Seeking to the start is the stopped state; past the end lands on the end.
+    transport.seekToStep(3)
+    transport.seekToStep(0)
+    expect(transport.paused).toBe(false)
+    expect(transport.currentStep).toBe(-1)
+    transport.seek(99)
+    expect(transport.positionSeconds).toBe(8)
+    transport.seek(-1)
+    expect(transport.positionSeconds).toBe(0)
+  })
+
+  it('seek while playing jumps there and carries on', async () => {
+    const transport = useTransportStore()
+    transport.play()
+    await vi.advanceTimersByTimeAsync(400)
+    transport.seekToStep(40)
+    expect(transport.playing).toBe(true)
+    expect(transport.positionSeconds).toBe(5)
+    // The new pass is anchored after the events already handed to the output (up to 120 ms ahead).
+    await vi.advanceTimersByTimeAsync(300)
+    expect(transport.positionSeconds).toBeGreaterThan(5.1)
+    expect(transport.positionSeconds).toBeLessThanOrEqual(5.3)
+    expect([41, 42]).toContain(transport.currentStep)
+  })
+
   it('stop while paused clears the paused position', async () => {
     const transport = useTransportStore()
     transport.play()
@@ -399,6 +435,24 @@ describe('useTransportStore', () => {
       transport.resume()
       expect(transport.positionSeconds).toBe(2)
       expect(transport.currentStep).toBe(16)
+    })
+
+    it('seek inside the loop points keeps playing; outside them it pauses there', async () => {
+      const song = useSongStore()
+      const transport = useTransportStore()
+      song.setLoopRange(1, 3) // 2 s to 6 s
+      transport.play()
+      expect(transport.positionSeconds).toBe(2)
+      transport.seekToStep(32)
+      expect(transport.playing).toBe(true)
+      expect(transport.positionSeconds).toBe(4)
+      transport.seekToStep(56)
+      expect(transport.playing).toBe(false)
+      expect(transport.paused).toBe(true)
+      expect(transport.positionSeconds).toBe(7)
+      // Stopped, a seek to the range start is the stopped state again.
+      transport.seek(2)
+      expect(transport.paused).toBe(false)
     })
 
     it('moves the stopped cursor along with the loop points', async () => {

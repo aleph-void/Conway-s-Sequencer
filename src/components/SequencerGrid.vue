@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { rangeContains } from '../core/clipboard'
 import { trackHue } from '../core/colors'
-import { MAX_CHANNELS, isChannelSilenced, isStepOn } from '../core/song'
+import { MAX_CHANNELS, clamp, isChannelSilenced, isStepOn } from '../core/song'
+import { useEditorStore } from '../stores/editor'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
 import { isVerticalOrientation, useUiStore } from '../stores/ui'
@@ -10,6 +12,7 @@ import ChannelHeader from './ChannelHeader.vue'
 const store = useSongStore()
 const transport = useTransportStore()
 const ui = useUiStore()
+const editor = useEditorStore()
 
 /**
  * Which way time runs along a track (a browser preference, see `stores/ui.ts`). The DOM is
@@ -116,10 +119,109 @@ function loopLabel(sectionName: string, bar: number, globalBar: number): string 
   return `Loop ${sectionName} bar ${bar + 1} (${state}); Shift extends the loop to it`
 }
 
-function begin(sectionId: string, channelId: string, step: number, event: PointerEvent) {
+// ---- the cursor -------------------------------------------------------------
+/**
+ * A click on a section header or a bar number puts the cursor on the step under the pointer,
+ * so a paste (below) lands there. Where the step is depends on which way the track runs;
+ * without a layout (no size) the click counts as the start of the header.
+ */
+function seekFromHeader(startStep: number, span: number, event: MouseEvent) {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  let fraction: number
+  switch (orientation.value) {
+    case 'ltr':
+      fraction = (event.clientX - rect.left) / rect.width
+      break
+    case 'rtl':
+      fraction = (rect.right - event.clientX) / rect.width
+      break
+    case 'ttb':
+      fraction = (event.clientY - rect.top) / rect.height
+      break
+    case 'btt':
+      fraction = (rect.bottom - event.clientY) / rect.height
+      break
+  }
+  if (!Number.isFinite(fraction)) fraction = 0
+  transport.seekToStep(startStep + clamp(Math.floor(fraction * span), 0, span - 1))
+}
+
+/** Enter or Space on a header puts the cursor at its start. */
+function seekToHeader(startStep: number) {
+  transport.seekToStep(startStep)
+}
+
+const cursorLabel = computed(() => {
+  const at = transport.position
+  if (!at) return 'the start'
+  const section = store.song.sections[at.sectionIndex]
+  const timing = store.timeline[at.sectionIndex]
+  if (!section || !timing) return 'the start'
+  const bar = Math.floor(at.stepInSection / timing.stepsPerBar) + 1
+  const step = (at.stepInSection % timing.stepsPerBar) + 1
+  return `${section.name} bar ${bar} step ${step}`
+})
+
+// ---- selection, copy and paste --------------------------------------------------
+/**
+ * Shift+drag with a mouse or pen selects a block: the rectangle between the cell pressed
+ * on and the cell under the pointer, across as many tracks as it covers. Shift+Enter or
+ * Shift+Space stretches the selection to the focused cell for keyboard users. The block is
+ * copied, cut, pasted at the cursor and deleted with the usual keys or the buttons above
+ * the grid; see `stores/editor.ts` for where a paste lands.
+ */
+const selectingCells = ref(false)
+
+const selection = computed(() => editor.liveSelection)
+
+const selectionLabel = computed(() => {
+  const range = selection.value
+  if (!range) return ''
+  const channels = range.channelEnd - range.channelStart
+  const steps = range.stepEnd - range.stepStart
+  return `${channels} ${channels === 1 ? 'track' : 'tracks'} × ${steps} ${steps === 1 ? 'step' : 'steps'}`
+})
+
+const pasteTitle = computed(() => {
+  const block = editor.clipboard
+  if (!block) return ''
+  return `Paste the copied block (${block.channels} × ${block.steps}) at the cursor: ${cursorLabel.value} (Ctrl+V)`
+})
+
+/** Keyboard shortcuts for the block, anywhere outside a text field: Ctrl/Cmd+C, X, V and Delete. */
+function onKey(event: KeyboardEvent) {
+  const target = event.target as HTMLElement | null
+  const tag = target?.tagName
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+  const modifier = (event.ctrlKey || event.metaKey) && !event.altKey
+  let handled = false
+  if (modifier && !event.shiftKey) {
+    const key = event.key.toLowerCase()
+    if (key === 'c') handled = editor.copy()
+    else if (key === 'x') handled = editor.cut()
+    else if (key === 'v') handled = editor.paste() !== null
+  } else if (!modifier && (event.key === 'Delete' || event.key === 'Backspace')) {
+    handled = editor.deleteSelection()
+  }
+  if (handled) event.preventDefault()
+}
+
+function begin(
+  sectionId: string,
+  channelId: string,
+  step: number,
+  channelIndex: number,
+  globalStep: number,
+  event: PointerEvent,
+) {
   lastPointerType = event.pointerType || 'mouse'
   if (lastPointerType === 'touch' || event.button !== 0) return
   event.preventDefault()
+  if (event.shiftKey) {
+    selectingCells.value = true
+    editor.selectCell({ channel: channelIndex, step: globalStep })
+    return
+  }
   const section = store.sectionById(sectionId)
   if (!section) return
   paintValue.value = !isStepOn(section, channelId, step)
@@ -127,9 +229,17 @@ function begin(sectionId: string, channelId: string, step: number, event: Pointe
   store.setStep(sectionId, channelId, step, paintValue.value)
 }
 
-function enter(sectionId: string, channelId: string, step: number, event: PointerEvent) {
-  if (!painting.value || (event.buttons & 1) === 0) return
-  store.setStep(sectionId, channelId, step, paintValue.value)
+function enter(
+  sectionId: string,
+  channelId: string,
+  step: number,
+  channelIndex: number,
+  globalStep: number,
+  event: PointerEvent,
+) {
+  if ((event.buttons & 1) === 0) return
+  if (selectingCells.value) editor.extendTo({ channel: channelIndex, step: globalStep })
+  else if (painting.value) store.setStep(sectionId, channelId, step, paintValue.value)
 }
 
 /** A finger tap: the browser fires click once it knows the touch was not a scroll. */
@@ -138,20 +248,33 @@ function tap(sectionId: string, channelId: string, step: number) {
   store.toggleStep(sectionId, channelId, step)
 }
 
-function keyToggle(sectionId: string, channelId: string, step: number) {
-  store.toggleStep(sectionId, channelId, step)
+function keyToggle(
+  sectionId: string,
+  channelId: string,
+  step: number,
+  channelIndex: number,
+  globalStep: number,
+  event: KeyboardEvent,
+) {
+  if (event.shiftKey) editor.extendTo({ channel: channelIndex, step: globalStep })
+  else store.toggleStep(sectionId, channelId, step)
 }
 
 function end() {
   painting.value = false
   selecting.value = false
+  selectingCells.value = false
 }
 
 onMounted(() => {
   window.addEventListener('pointerup', end)
+  window.addEventListener('keydown', onKey)
   scrollToStart()
 })
-onBeforeUnmount(() => window.removeEventListener('pointerup', end))
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerup', end)
+  window.removeEventListener('keydown', onKey)
+})
 
 /**
  * Classes for one cell. Consecutive on-steps are one held gate (see `compileSong`), so a
@@ -162,18 +285,21 @@ function cellClass(
   sectionId: string,
   channelId: string,
   step: number,
+  channelIndex: number,
   globalStep: number,
   subdivision: number,
   stepCount: number,
 ) {
   const section = store.sectionById(sectionId)
   const on = section ? isStepOn(section, channelId, step) : false
+  const range = selection.value
   return {
     on,
     'tie-prev': on && step > 0 && isStepOn(section!, channelId, step - 1),
     'tie-next': on && step < stepCount - 1 && isStepOn(section!, channelId, step + 1),
     beat: step % subdivision === 0,
     playhead: globalStep === currentStep.value,
+    selected: range !== null && rangeContains(range, channelIndex, globalStep),
   }
 }
 </script>
@@ -185,6 +311,35 @@ function cellClass(
       <span class="muted count" data-testid="channel-count">
         {{ store.song.channels.length }} / {{ MAX_CHANNELS }} channels · {{ store.stepTotal }} steps
       </span>
+      <div v-if="selection" class="block-tools" data-testid="selection">
+        <span class="muted selection-size" data-testid="selection-size">{{ selectionLabel }} selected</span>
+        <button class="small" title="Copy the selected block (Ctrl+C)" data-testid="copy" @click="editor.copy()">
+          Copy
+        </button>
+        <button class="small" title="Copy the selected block and clear it (Ctrl+X)" data-testid="cut" @click="editor.cut()">
+          Cut
+        </button>
+        <button
+          class="small"
+          title="Clear the selected block (Delete)"
+          data-testid="delete-selection"
+          @click="editor.deleteSelection()"
+        >
+          Delete
+        </button>
+        <button
+          class="small icon"
+          title="Clear the selection"
+          aria-label="Clear the selection"
+          data-testid="clear-selection"
+          @click="editor.clearSelection()"
+        >
+          ✕
+        </button>
+      </div>
+      <button v-if="editor.hasClipboard" class="small" :title="pasteTitle" data-testid="paste" @click="editor.paste()">
+        Paste at cursor
+      </button>
       <button class="primary" :disabled="!store.canAddChannel" data-testid="add-channel" @click="store.addChannel()">
         + Add channel
       </button>
@@ -209,8 +364,14 @@ function cellClass(
             :key="section.id"
             class="section-label"
             :style="{ '--span': timing.stepCount }"
-            :title="`${section.name}: ${timing.tempo} BPM, ${section.timeSignature.beats}/${section.timeSignature.unit}, ${section.bars} bars`"
+            :title="`${section.name}: ${timing.tempo} BPM, ${section.timeSignature.beats}/${section.timeSignature.unit}, ${section.bars} bars. Click to put the cursor there`"
+            role="button"
+            tabindex="0"
+            :aria-label="`Put the cursor in ${section.name}`"
             :data-testid="`grid-section-${timing.index}`"
+            @click="seekFromHeader(timing.startStep, timing.stepCount, $event)"
+            @keydown.enter.prevent="seekToHeader(timing.startStep)"
+            @keydown.space.prevent="seekToHeader(timing.startStep)"
           >
             <span class="section-name">{{ section.name }}</span>
             <span class="section-meta mono">
@@ -221,13 +382,21 @@ function cellClass(
         </div>
         <div class="header-row bars-row">
           <div class="corner" />
-          <template v-for="{ section, bars } in sections" :key="section.id">
+          <template v-for="{ section, timing, bars } in sections" :key="section.id">
             <div
               v-for="bar in bars"
               :key="bar.bar"
               class="bar-label mono"
               :class="{ 'in-loop': inLoop(bar.globalBar) }"
               :style="{ '--span': bar.stepsPerBar }"
+              :title="`${section.name} bar ${bar.bar + 1}: click to put the cursor there`"
+              role="button"
+              tabindex="0"
+              :aria-label="`Put the cursor at ${section.name} bar ${bar.bar + 1}`"
+              :data-testid="`bar-label-${bar.globalBar}`"
+              @click="seekFromHeader(timing.startStep + bar.startStep, bar.stepsPerBar, $event)"
+              @keydown.enter.prevent="seekToHeader(timing.startStep + bar.startStep)"
+              @keydown.space.prevent="seekToHeader(timing.startStep + bar.startStep)"
             >
               {{ bar.bar + 1 }}
             </div>
@@ -302,6 +471,7 @@ function cellClass(
                   section.id,
                   channel.id,
                   step - 1,
+                  channelIndex,
                   timing.startStep + step - 1,
                   section.subdivision,
                   timing.stepCount,
@@ -312,11 +482,15 @@ function cellClass(
               :aria-checked="isStepOn(section, channel.id, step - 1)"
               :aria-label="`${channel.name}, ${section.name}, step ${step}`"
               :data-testid="`cell-${channelIndex}-${timing.index}-${step - 1}`"
-              @pointerdown="begin(section.id, channel.id, step - 1, $event)"
-              @pointerenter="enter(section.id, channel.id, step - 1, $event)"
+              @pointerdown="begin(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)"
+              @pointerenter="enter(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)"
               @click="tap(section.id, channel.id, step - 1)"
-              @keydown.enter.prevent="keyToggle(section.id, channel.id, step - 1)"
-              @keydown.space.prevent="keyToggle(section.id, channel.id, step - 1)"
+              @keydown.enter.prevent="
+                keyToggle(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)
+              "
+              @keydown.space.prevent="
+                keyToggle(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)
+              "
             />
           </template>
         </div>
@@ -350,6 +524,27 @@ function cellClass(
   margin-right: auto;
 }
 
+/* Copy, cut, delete and clear for the selected block, and paste for the clipboard. */
+.block-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.selection-size {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.head button.small {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.head button.small.icon {
+  padding: 4px 7px;
+}
+
 @media (max-width: 767px) {
   .head {
     flex-wrap: wrap;
@@ -361,7 +556,7 @@ function cellClass(
     order: 3;
   }
 
-  .head button {
+  .head > button {
     margin-left: auto;
   }
 }
@@ -684,6 +879,21 @@ function cellClass(
   font-size: 12px;
   /* Readable text whichever way the row runs. */
   direction: ltr;
+  /* A click puts the cursor under the pointer. */
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .section-label:hover,
+  .bar-label:hover {
+    background: var(--accent-soft);
+  }
+}
+
+.section-label:focus-visible,
+.bar-label:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: -2px;
 }
 
 .horizontal .section-label {
@@ -726,6 +936,7 @@ function cellClass(
   font-size: 10px;
   color: var(--text-dim);
   direction: ltr;
+  cursor: pointer;
 }
 
 .horizontal .bar-label {
@@ -780,7 +991,7 @@ function cellClass(
 }
 
 .channel-row.is-muted .cell.on {
-  background: var(--track-color-dim);
+  background-color: var(--track-color-dim);
   opacity: 0.55;
 }
 
@@ -859,6 +1070,14 @@ function cellClass(
 .cell:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+/*
+ * The selected block: a wash of the accent laid over the cells, lit or not, as a background
+ * image so it sits on top of whatever colour the cell has (a gate's track colour included).
+ */
+.cell.selected {
+  background-image: linear-gradient(var(--selection), var(--selection));
 }
 
 /* Step boundaries per orientation: the "start" side faces the start of the song. */
