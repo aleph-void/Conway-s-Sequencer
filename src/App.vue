@@ -3,6 +3,7 @@ import AppHeader from './components/AppHeader.vue'
 import MidiPanel from './components/MidiPanel.vue'
 import TransportBar from './components/TransportBar.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
+import EditorPanel from './components/EditorPanel.vue'
 import SectionsPanel from './components/SectionsPanel.vue'
 import SequencerGrid from './components/SequencerGrid.vue'
 import ModuleView from './components/ModuleView.vue'
@@ -67,6 +68,7 @@ const year = new Date().getFullYear()
         <SectionsPanel />
         <div class="drawer-side">
           <SettingsPanel />
+          <EditorPanel />
           <SongIO />
         </div>
       </div>
@@ -223,9 +225,16 @@ button.active .glyph {
   }
 }
 
-/* On short screens the drawer must not squeeze the grid out entirely. */
+/*
+ * On short screens the drawer must not squeeze the grid out entirely: when the shell runs
+ * out of height the drawer gives way first (a large shrink factor), scrolling inside what
+ * is left, and the grid keeps the rest. Without this the overflow would spill under the
+ * footer, which paints over the last channel rows.
+ */
 @media (max-height: 760px) {
   .drawer {
+    flex: 0 100 auto;
+    min-height: 180px;
     max-height: 45vh;
     overflow: auto;
   }
@@ -245,6 +254,8 @@ button.active .glyph {
   }
 
   .drawer {
+    flex: 0 0 auto;
+    min-height: 0;
     max-height: none;
     overflow: visible;
   }

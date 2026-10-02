@@ -4,7 +4,17 @@ import { noteName } from '../core/midi'
 import { MAX_CHANNELS, isChannelSilenced, type Channel } from '../core/song'
 import { useSongStore } from '../stores/song'
 
-const props = defineProps<{ channel: Channel; index: number; baseNote: number; total: number }>()
+const props = defineProps<{
+  channel: Channel
+  index: number
+  baseNote: number
+  total: number
+  /**
+   * The channel is a column rather than a row (the grid's track orientation is top to bottom
+   * or bottom to top): the header tops the column and the channels are ordered left to right.
+   */
+  vertical?: boolean
+}>()
 const store = useSongStore()
 
 /** Silenced overall: muted outright, or another channel is soloed and this one is not. */
@@ -23,7 +33,7 @@ function remove() {
 </script>
 
 <template>
-  <div class="channel-header" :class="{ muted: silenced }" :data-testid="`channel-header-${index}`">
+  <div class="channel-header" :class="{ muted: silenced, vertical }" :data-testid="`channel-header-${index}`">
     <div class="ident">
       <span class="swatch" aria-hidden="true" data-testid="channel-swatch" />
       <input
@@ -49,7 +59,7 @@ function remove() {
     </div>
     <div class="controls">
       <button
-        class="icon toggle"
+        class="icon toggle mute"
         :class="{ active: channel.muted, implied: mutedBySolo }"
         :aria-pressed="channel.muted"
         :title="mutedBySolo ? 'Muted by solo' : 'Mute'"
@@ -68,9 +78,26 @@ function remove() {
       >
         S
       </button>
-      <button class="icon" title="Move up" :disabled="index === 0" data-testid="channel-up" @click="store.moveChannel(channel.id, -1)">↑</button>
-      <button class="icon" title="Move down" :disabled="index === total - 1" data-testid="channel-down" @click="store.moveChannel(channel.id, 1)">↓</button>
-      <button class="icon danger" title="Remove channel" data-testid="channel-remove" @click="remove">✕</button>
+      <!-- Channels are rows ordered top to bottom, or, in a vertical orientation, columns ordered left to right. -->
+      <button
+        class="icon up"
+        :title="vertical ? 'Move left' : 'Move up'"
+        :disabled="index === 0"
+        data-testid="channel-up"
+        @click="store.moveChannel(channel.id, -1)"
+      >
+        {{ vertical ? '←' : '↑' }}
+      </button>
+      <button
+        class="icon down"
+        :title="vertical ? 'Move right' : 'Move down'"
+        :disabled="index === total - 1"
+        data-testid="channel-down"
+        @click="store.moveChannel(channel.id, 1)"
+      >
+        {{ vertical ? '→' : '↓' }}
+      </button>
+      <button class="icon danger remove" title="Remove channel" data-testid="channel-remove" @click="remove">✕</button>
     </div>
   </div>
 </template>
@@ -84,6 +111,8 @@ function remove() {
   padding: 0 6px 0 4px;
   width: var(--row-head-width);
   font-size: 12px;
+  /* The right-to-left grid mirrors its rows, but the header's text and controls stay readable. */
+  direction: ltr;
 }
 
 /* One line on desktop: the groups are only there so phones can stack them (below). */
@@ -164,6 +193,75 @@ function remove() {
   .controls .icon {
     flex: 1 1 0;
   }
+}
+
+/*
+ * Vertical orientations: the header tops a column as wide as a track, so the name, the
+ * output and the buttons stack on three lines. The same cells, laid out on a grid.
+ */
+.channel-header.vertical {
+  display: grid;
+  grid-template-columns: 4px repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    'swatch name name name'
+    'out out mute solo'
+    'up up down remove';
+  gap: 3px;
+  align-items: center;
+  width: auto;
+  height: var(--track-head-height);
+  padding: 4px;
+}
+
+.vertical .ident,
+.vertical .controls {
+  display: contents;
+}
+
+.vertical .swatch {
+  grid-area: swatch;
+}
+
+.vertical .name {
+  grid-area: name;
+  width: 100%;
+  padding: 1px 4px;
+}
+
+.vertical .out {
+  grid-area: out;
+  display: flex;
+}
+
+.vertical .out input {
+  width: 100%;
+  padding: 1px 3px;
+}
+
+.vertical .icon {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.vertical .mute {
+  grid-area: mute;
+}
+
+.vertical .solo {
+  grid-area: solo;
+}
+
+.vertical .up {
+  grid-area: up;
+}
+
+.vertical .down {
+  grid-area: down;
+}
+
+.vertical .remove {
+  grid-area: remove;
 }
 
 .toggle.active {

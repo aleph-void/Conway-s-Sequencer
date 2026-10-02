@@ -36,6 +36,8 @@ const name = computed({
 /* Matches the fixed nav on alephvoid.com: translucent near-black with a hairline border. */
 .header {
   position: relative;
+  /* Never squeezed by a tall grid: the viewport-sized shell takes the room from the grid instead. */
+  flex: 0 0 auto;
   padding: 12px 20px;
   border-bottom: 1px solid var(--border);
   background: rgba(10, 10, 15, 0.85);

@@ -78,6 +78,12 @@ backend, and songs autosave to local storage.
   toolbar (MIDI output + transport); sections, module settings and song files
   live in a collapsible settings drawer whose state is remembered. A Full
   screen button puts the whole GUI in the browser's full-screen mode.
+- **Track orientation.** An Editor setting in the drawer turns the grid: tracks
+  run left to right (the default), right to left, top to bottom or bottom to
+  top. Sideways, every channel becomes a column headed by its name and
+  controls, and the section, bar and loop strips run down the left edge. The
+  choice is a preference of the browser, kept across songs and reloads; it is
+  not part of the song file.
 - **Works on tablets and phones.** Below desktop width the page scrolls
   instead of squeezing the grid; on phones the toolbar and drawer stack, the
   channel column narrows and the drawer starts closed so the grid is on
