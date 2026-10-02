@@ -14,6 +14,21 @@ const loop = computed({
   set: (value: boolean) => song.updateSettings({ loop: value }),
 })
 
+/** The loop points as shown to the user: 1-based, inclusive bar numbers, plus their times. */
+const loopLabel = computed(() => {
+  const range = song.song.settings.loopRange
+  const seconds = song.loopSeconds
+  if (!range || !seconds) return null
+  const bars = range.end - range.start === 1 ? `bar ${range.start + 1}` : `bars ${range.start + 1}–${range.end}`
+  return `${bars} · ${formatDuration(seconds.start)}–${formatDuration(seconds.end)}`
+})
+
+const loopTitle = computed(() =>
+  song.song.settings.loopRange
+    ? 'Repeat the bars between the loop points; unticked, play them once and stop'
+    : 'Repeat the song; unticked, play it once and stop',
+)
+
 const playLabel = computed(() => {
   if (transport.playing) return '❙❙ Pause'
   return transport.paused ? '▶ Resume' : '▶ Play'
@@ -84,7 +99,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <button title="Stop and send note-off to every output (Esc)" data-testid="panic" @click="transport.panic()">
         Panic
       </button>
-      <label class="check">
+      <label class="check" :title="loopTitle">
         <span>Loop</span>
         <input v-model="loop" type="checkbox" data-testid="loop" />
       </label>
@@ -93,9 +108,26 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <span class="muted"> / {{ formatDuration(song.duration) }}</span>
       </div>
     </div>
+    <!--
+      The loop points live on this line rather than in the row above: the toolbar wraps when the row
+      grows, which would shift the grid under a pointer that is still dragging across the loop strip.
+    -->
     <p class="meta">
       <span data-testid="section-readout">{{ sectionLabel }}</span>
       <span v-if="!midi.isConnected" class="status-warn"> · no MIDI output selected, playback is silent</span>
+      <span v-if="loopLabel" class="loop-points" data-testid="loop-range">
+        · <span class="loop-glyph" aria-hidden="true">⟲</span> loop {{ loopLabel }}
+        <button
+          class="loop-clear"
+          type="button"
+          title="Clear the loop points and play the whole song"
+          aria-label="Clear the loop points"
+          data-testid="loop-range-clear"
+          @click="song.clearLoopRange()"
+        >
+          ✕
+        </button>
+      </span>
       <span class="muted hint"> · Space = play/pause, Esc = panic</span>
     </p>
   </section>
@@ -123,6 +155,32 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   gap: 6px;
 }
 
+.loop-points {
+  color: var(--accent-bright);
+  font-variant-numeric: tabular-nums;
+}
+
+.loop-glyph {
+  font-size: 12px;
+}
+
+/* Kept shorter than the line so showing it never changes the height of the meta line. */
+.loop-clear {
+  min-height: 0;
+  height: 14px;
+  margin-left: 2px;
+  padding: 0 4px;
+  font-size: 9px;
+  line-height: 1;
+  vertical-align: text-bottom;
+  border-radius: 3px;
+  color: var(--text-dim);
+}
+
+.loop-clear:hover:not(:disabled) {
+  color: var(--accent-bright);
+}
+
 .readout {
   margin-left: 6px;
   font-size: 15px;
@@ -136,6 +194,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /*
+   * The line's text must not size the toolbar: as it gets longer (loop points set, no MIDI
+   * output) the toolbar would wrap and grow, moving the grid under the pointer.
+   */
+  contain: inline-size;
 }
 
 /* Keyboard shortcuts mean nothing to a finger. */

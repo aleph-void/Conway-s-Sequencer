@@ -50,6 +50,13 @@ backend, and songs autosave to local storage.
 - **Transport.** Play, pause where the cursor is, resume from there, reset the
   cursor to the start (playback keeps going if it was running), stop, loop and
   panic. Space = play/pause, Esc = panic.
+- **Loop points.** The Loop strip under the bar numbers sets a range of bars to
+  listen to on their own: click a bar to loop just that bar, drag across bars for
+  a range, Shift+click (or Shift+Enter) to extend it, ✕ to clear it. Playback
+  stays between the points, across sections and tempo changes, and the Loop
+  box decides whether the range repeats or plays once and stops. Gates that
+  cross a loop point are cut cleanly at it, and the points are saved with the
+  song.
 - **JSON export/import.**
 - **Works offline and installs as an app.** The site is a progressive web app:
   a service worker precaches the whole build on the first visit, so it loads
@@ -144,7 +151,10 @@ import and out-of-range values are clamped; see `src/core/serialization.ts`.
 {
   "version": 1,
   "name": "Untitled",
-  "settings": { "midiChannel": 1, "baseNote": 36, "velocity": 100, "playGateNote": 99, "loop": true },
+  "settings": {
+    "midiChannel": 1, "baseNote": 36, "velocity": 100, "playGateNote": 99, "loop": true,
+    "loopRange": { "start": 4, "end": 8 }  // bars 5–8 of the whole song (0-based, end exclusive); null = whole song
+  },
   "channels": [{ "id": "ch_1", "name": "Kick", "output": 0, "muted": false, "solo": false }],
   "sections": [
     {

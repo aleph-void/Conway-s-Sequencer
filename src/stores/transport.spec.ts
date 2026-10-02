@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { useMidiStore, type MidiAccessLike, type MidiOutputLike } from './midi'
 import { useSongStore } from './song'
 import { useTransportStore } from './transport'
@@ -311,5 +312,167 @@ describe('useTransportStore', () => {
     song.updateSettings({ loop: false })
     await vi.advanceTimersByTimeAsync(8100)
     expect(transport.playing).toBe(false)
+  })
+
+  describe('loop points', () => {
+    /** Note-ons of the first channel (note 36) as scheduler timestamps. */
+    const gateOns = () => out.sent.filter((s) => s[0][0] === 0x90 && s[0][1] === 36).map((s) => s[1])
+
+    it('plays only the bars between the loop points and wraps inside them', async () => {
+      const song = useSongStore()
+      const transport = useTransportStore()
+      const sec = song.song.sections[0]!
+      const ch = song.song.channels[0]!.id
+      // The default song: four 2 s bars. Gates at 0 s, 2 s (bar 2), 5 s (bar 3) and 6 s (bar 4).
+      for (const step of [0, 16, 40, 48]) song.toggleStep(sec.id, ch, step)
+      song.setLoopRange(1, 3) // bars 2–3: 2 s to 6 s
+      await nextTick()
+      expect(transport.positionSeconds).toBe(2)
+
+      transport.play()
+      expect(transport.playing).toBe(true)
+      expect(transport.positionSeconds).toBe(2)
+      expect(transport.currentStep).toBe(16)
+      expect(out.sent[0]).toEqual([[0x90, 99, 100], 0]) // the play gate first...
+      expect(out.sent[1]).toEqual([[0x90, 36, 100], 0]) // ...then the gate at the loop start
+      await vi.advanceTimersByTimeAsync(4100)
+      // Bar 2's gate, bar 3's gate, then bar 2's again after the wrap: nothing from bars 1 or 4.
+      expect(gateOns()).toEqual([0, 3000, 4000])
+      expect(transport.positionSeconds).toBeCloseTo(2.1, 1)
+      expect(transport.currentStep).toBe(16)
+      // The clock keeps running through the wrap.
+      expect(out.sent.filter((s) => s[0][0] === 0x90 && s[0][1] === 98 && s[1]! >= 4000).length).toBeGreaterThan(0)
+      transport.stop()
+      expect(transport.positionSeconds).toBe(2)
+      expect(transport.paused).toBe(false)
+    })
+
+    it('plays the range once and stops at its end when loop is off', async () => {
+      const song = useSongStore()
+      song.updateSettings({ loop: false })
+      song.setLoopRange(1, 3)
+      const transport = useTransportStore()
+      transport.play()
+      await vi.advanceTimersByTimeAsync(3900)
+      expect(transport.playing).toBe(true)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(transport.playing).toBe(false)
+      expect(transport.paused).toBe(false)
+      expect(transport.positionSeconds).toBe(2)
+      expect(out.sent.filter((s) => s[0][1] === 99).map((s) => s[0])).toEqual([[0x90, 99, 100], [0x80, 99, 0]])
+    })
+
+    it('pauses and resumes inside the range; reset and stop go to the range start', async () => {
+      const song = useSongStore()
+      song.setLoopRange(1, 3)
+      const transport = useTransportStore()
+      transport.play()
+      await vi.advanceTimersByTimeAsync(1000)
+      transport.pause()
+      expect(transport.paused).toBe(true)
+      expect(transport.positionSeconds).toBeCloseTo(3, 2)
+      transport.resume()
+      expect(transport.playing).toBe(true)
+      expect(transport.positionSeconds).toBeCloseTo(3, 2)
+      await vi.advanceTimersByTimeAsync(500)
+      expect(transport.positionSeconds).toBeCloseTo(3.5, 1)
+
+      transport.reset()
+      expect(transport.playing).toBe(true)
+      expect(transport.positionSeconds).toBe(2)
+      expect(transport.currentStep).toBe(16)
+      await vi.advanceTimersByTimeAsync(500)
+      transport.stop()
+      expect(transport.playing).toBe(false)
+      expect(transport.paused).toBe(false)
+      expect(transport.positionSeconds).toBe(2)
+    })
+
+    it('starts from the range start when the paused cursor is outside the loop points', async () => {
+      const song = useSongStore()
+      const transport = useTransportStore()
+      transport.play()
+      await vi.advanceTimersByTimeAsync(1000)
+      transport.pause()
+      expect(transport.positionSeconds).toBeCloseTo(1, 2)
+      song.setLoopRange(1, 3)
+      transport.resume()
+      expect(transport.positionSeconds).toBe(2)
+      expect(transport.currentStep).toBe(16)
+    })
+
+    it('moves the stopped cursor along with the loop points', async () => {
+      const song = useSongStore()
+      const transport = useTransportStore()
+      expect(transport.positionSeconds).toBe(0)
+      song.setLoopRange(2, 3)
+      await nextTick()
+      expect(transport.positionSeconds).toBe(4)
+      expect(transport.currentStep).toBe(-1)
+      song.clearLoopRange()
+      await nextTick()
+      expect(transport.positionSeconds).toBe(0)
+    })
+
+    it('carries on inside new loop points set while playing, or restarts when left outside', async () => {
+      const song = useSongStore()
+      const transport = useTransportStore()
+      // A restart is anchored after the clock pulses already handed to the output, so the cursor
+      // may read up to the 120 ms look-ahead behind where it was.
+      const expectNear = (expected: number) => {
+        expect(transport.positionSeconds).toBeGreaterThan(expected - 0.13)
+        expect(transport.positionSeconds).toBeLessThanOrEqual(expected + 0.001)
+      }
+      song.setLoopRange(0, 2) // 0–4 s
+      transport.play()
+      await vi.advanceTimersByTimeAsync(3000)
+      expectNear(3)
+      song.setLoopRange(1, 3) // 2–6 s: the cursor at 3 s is still inside
+      await nextTick()
+      expect(transport.playing).toBe(true)
+      expectNear(3)
+      const before = transport.positionSeconds
+      await vi.advanceTimersByTimeAsync(2500)
+      // Past the old range's end, inside the new one.
+      expectNear(before + 2.5)
+      song.setLoopRange(3, 4) // 6–8 s: the cursor is left outside, so the range starts over
+      await nextTick()
+      expect(transport.playing).toBe(true)
+      expectNear(6)
+      await vi.advanceTimersByTimeAsync(1000)
+      expectNear(7)
+      const inside = transport.positionSeconds
+      song.clearLoopRange() // the whole song: the cursor at 7 s is inside it
+      await nextTick()
+      expectNear(inside)
+      expect(transport.currentStep).toBeGreaterThanOrEqual(54)
+    })
+
+    it('picks up grid edits while looping a range', async () => {
+      const song = useSongStore()
+      const transport = useTransportStore()
+      const sec = song.song.sections[0]!
+      const ch = song.song.channels[0]!.id
+      song.setLoopRange(1, 3)
+      transport.play()
+      await vi.advanceTimersByTimeAsync(100)
+      song.toggleStep(sec.id, ch, 24) // 3 s into the song, 1 s into the range
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(gateOns()).toEqual([1000])
+      expect(transport.playing).toBe(true)
+    })
+
+    it('plays the whole song once the loop points are cleared', async () => {
+      const song = useSongStore()
+      const transport = useTransportStore()
+      const sec = song.song.sections[0]!
+      const ch = song.song.channels[0]!.id
+      song.toggleStep(sec.id, ch, 0)
+      song.setLoopRange(1, 3)
+      song.clearLoopRange()
+      transport.play()
+      expect(transport.positionSeconds).toBe(0)
+      expect(out.sent[1]).toEqual([[0x90, 36, 100], 0])
+    })
   })
 })

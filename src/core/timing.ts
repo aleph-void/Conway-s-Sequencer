@@ -1,4 +1,12 @@
-import { DEFAULT_TEMPO, stepCount, stepsPerBar, type Section, type Song, type TimeSignature } from './song'
+import {
+  DEFAULT_TEMPO,
+  stepCount,
+  stepsPerBar,
+  type LoopRange,
+  type Section,
+  type Song,
+  type TimeSignature,
+} from './song'
 
 /**
  * Resolve each section's effective tempo. A `null` tempo inherits from the
@@ -28,6 +36,8 @@ export interface SectionTiming {
   stepCount: number
   /** Index of this section's first step in the whole-song step axis. */
   startStep: number
+  /** Index of this section's first bar in the whole-song bar axis. */
+  startBar: number
   /** Seconds from song start. */
   startTime: number
   duration: number
@@ -36,6 +46,7 @@ export interface SectionTiming {
 export function buildTimeline(song: Pick<Song, 'sections'>): SectionTiming[] {
   const tempos = resolveTempos(song.sections)
   let startStep = 0
+  let startBar = 0
   let startTime = 0
   return song.sections.map((section, index) => {
     const tempo = tempos[index] ?? DEFAULT_TEMPO
@@ -50,10 +61,12 @@ export function buildTimeline(song: Pick<Song, 'sections'>): SectionTiming[] {
       stepsPerBar: stepsPerBar(section),
       stepCount: count,
       startStep,
+      startBar,
       startTime,
       duration,
     }
     startStep += count
+    startBar += section.bars
     startTime += duration
     return timing
   })
@@ -67,6 +80,37 @@ export function totalSteps(timeline: readonly SectionTiming[]): number {
 export function totalDuration(timeline: readonly SectionTiming[]): number {
   const last = timeline[timeline.length - 1]
   return last ? last.startTime + last.duration : 0
+}
+
+export function totalBars(timeline: readonly SectionTiming[]): number {
+  const last = timeline[timeline.length - 1]
+  return last ? last.startBar + last.stepCount / last.stepsPerBar : 0
+}
+
+/**
+ * Seconds from song start to the start of a bar on the whole-song bar axis. The bar after
+ * the last one maps to the end of the song, so a loop range's `end` can be converted too.
+ */
+export function barStartTime(timeline: readonly SectionTiming[], bar: number): number {
+  for (const t of timeline) {
+    const bars = t.stepCount / t.stepsPerBar
+    if (bar < t.startBar + bars) return t.startTime + Math.max(0, bar - t.startBar) * t.stepsPerBar * t.stepDuration
+  }
+  return totalDuration(timeline)
+}
+
+export interface TimeRange {
+  /** Seconds from song start. */
+  start: number
+  end: number
+}
+
+/** The seconds a loop range covers, or null when there is no range (the whole song plays). */
+export function loopRangeSeconds(timeline: readonly SectionTiming[], range: LoopRange | null): TimeRange | null {
+  if (!range) return null
+  const start = barStartTime(timeline, range.start)
+  const end = barStartTime(timeline, range.end)
+  return end > start ? { start, end } : null
 }
 
 export interface Position {

@@ -39,7 +39,31 @@ describe('normalizeSong', () => {
       subdivision: 4,
       steps: {},
     })
-    expect(song.settings).toEqual({ midiChannel: 1, baseNote: 36, velocity: 100, playGateNote: 99, loop: true })
+    expect(song.settings).toEqual({
+      midiChannel: 1,
+      baseNote: 36,
+      velocity: 100,
+      playGateNote: 99,
+      loop: true,
+      loopRange: null,
+    })
+  })
+
+  it('keeps loop points inside the song and drops broken ones', () => {
+    const sections = [{ bars: 4 }, { bars: 2 }]
+    const load = (loopRange: unknown) => normalizeSong({ channels: [], sections, settings: { loopRange } }).settings.loopRange
+    expect(load({ start: 1, end: 5 })).toEqual({ start: 1, end: 5 })
+    expect(load({ start: 4, end: 40 })).toEqual({ start: 4, end: 6 })
+    expect(load({ start: 5, end: 1 })).toEqual({ start: 1, end: 5 })
+    expect(load({ start: 6, end: 9 })).toBeNull()
+    expect(load({ start: 'a', end: 2 })).toBeNull()
+    expect(load(undefined)).toBeNull()
+  })
+
+  it('round-trips loop points', () => {
+    const song = createSong('Looped')
+    song.settings.loopRange = { start: 1, end: 3 }
+    expect(parseSong(serializeSong(song)).settings.loopRange).toEqual({ start: 1, end: 3 })
   })
 
   it('clamps numeric ranges', () => {

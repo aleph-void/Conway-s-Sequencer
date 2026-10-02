@@ -11,7 +11,9 @@ import {
   isStepOn,
   MAX_CHANNELS,
   nextFreeOutput,
+  normalizeLoopRange,
   stepCount,
+  totalBars,
   stepsPerBar,
   withStepSet,
   withStepToggled,
@@ -130,5 +132,40 @@ describe('nextFreeOutput', () => {
   it('returns null when all 62 outputs are used', () => {
     const all = Array.from({ length: MAX_CHANNELS }, (_, i) => createChannel(i))
     expect(nextFreeOutput(all)).toBeNull()
+  })
+})
+
+describe('loop points', () => {
+  it('counts the bars of the whole song', () => {
+    expect(totalBars([])).toBe(0)
+    expect(totalBars([{ bars: 4 }, { bars: 2 }, { bars: 1 }])).toBe(7)
+  })
+
+  it('keeps a sane range as it is', () => {
+    expect(normalizeLoopRange({ start: 2, end: 5 }, 8)).toEqual({ start: 2, end: 5 })
+    expect(normalizeLoopRange({ start: 0, end: 8 }, 8)).toEqual({ start: 0, end: 8 })
+  })
+
+  it('turns a reversed range the right way round and rounds to whole bars', () => {
+    expect(normalizeLoopRange({ start: 5, end: 2 }, 8)).toEqual({ start: 2, end: 5 })
+    expect(normalizeLoopRange({ start: 1.4, end: 3.6 }, 8)).toEqual({ start: 1, end: 4 })
+  })
+
+  it('clamps a range to the song and drops one that no longer covers a bar', () => {
+    expect(normalizeLoopRange({ start: 6, end: 20 }, 8)).toEqual({ start: 6, end: 8 })
+    expect(normalizeLoopRange({ start: -3, end: 2 }, 8)).toEqual({ start: 0, end: 2 })
+    expect(normalizeLoopRange({ start: 8, end: 12 }, 8)).toBeNull()
+    expect(normalizeLoopRange({ start: 3, end: 3 }, 8)).toBeNull()
+    expect(normalizeLoopRange({ start: 0, end: 1 }, 0)).toBeNull()
+  })
+
+  it('rejects anything that is not a pair of finite numbers', () => {
+    expect(normalizeLoopRange(null, 8)).toBeNull()
+    expect(normalizeLoopRange(undefined, 8)).toBeNull()
+    expect(normalizeLoopRange('1-4', 8)).toBeNull()
+    expect(normalizeLoopRange({ start: '1', end: 4 }, 8)).toBeNull()
+    expect(normalizeLoopRange({ start: 1 }, 8)).toBeNull()
+    expect(normalizeLoopRange({ start: 1, end: Number.NaN }, 8)).toBeNull()
+    expect(normalizeLoopRange({ start: 1, end: Number.POSITIVE_INFINITY }, 8)).toBeNull()
   })
 })
