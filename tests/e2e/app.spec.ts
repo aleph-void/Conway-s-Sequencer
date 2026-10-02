@@ -171,3 +171,91 @@ test.describe('MIDI output selection', () => {
     await expect(page.getByTestId('midi-status')).toContainText('Select an output')
   })
 })
+
+test.describe('track orientation', () => {
+  test('turns the tracks to run right to left, top to bottom or bottom to top', async ({ midiPage: page }) => {
+    const box = async (id: string) => (await page.getByTestId(id).boundingBox())!
+    const grid = page.getByTestId('grid')
+    const select = page.getByTestId('track-orientation')
+    const cell = (c: number, s: number) => page.getByTestId(`cell-${c}-0-${s}`)
+
+    // Left to right: later steps to the right, the next channel below, the header on the left.
+    await expect(grid).toHaveAttribute('data-orientation', 'ltr')
+    let a = await box('cell-0-0-0')
+    let b = await box('cell-0-0-1')
+    let c = await box('cell-1-0-0')
+    let head = await box('channel-header-0')
+    expect(b.x).toBeGreaterThan(a.x)
+    expect(b.y).toBe(a.y)
+    expect(c.y).toBeGreaterThan(a.y)
+    expect(head.x + head.width).toBeLessThanOrEqual(a.x + 1)
+
+    // Right to left: a mirror image, with the headers on the right and the song's start beside them.
+    await select.selectOption('rtl')
+    await expect(grid).toHaveAttribute('data-orientation', 'rtl')
+    a = await box('cell-0-0-0')
+    b = await box('cell-0-0-1')
+    c = await box('cell-1-0-0')
+    head = await box('channel-header-0')
+    expect(b.x).toBeLessThan(a.x)
+    expect(b.y).toBe(a.y)
+    expect(c.y).toBeGreaterThan(a.y)
+    expect(head.x).toBeGreaterThanOrEqual(a.x + a.width - 1)
+    await expect(cell(0, 0)).toBeInViewport()
+    await expect(page.getByTestId('channel-header-0')).toBeInViewport()
+
+    // Top to bottom: each channel is a column, later steps below, the next channel to the right.
+    await select.selectOption('ttb')
+    await expect(grid).toHaveAttribute('data-orientation', 'ttb')
+    a = await box('cell-0-0-0')
+    b = await box('cell-0-0-1')
+    c = await box('cell-1-0-0')
+    head = await box('channel-header-0')
+    expect(b.y).toBeGreaterThan(a.y)
+    expect(b.x).toBe(a.x)
+    expect(c.x).toBeGreaterThan(a.x)
+    expect(c.y).toBe(a.y)
+    expect(head.y + head.height).toBeLessThanOrEqual(a.y + 1)
+    // The section strip runs down the left edge, and the move buttons now point sideways.
+    const section = await box('grid-section-0')
+    expect(section.height).toBeGreaterThan(section.width)
+    expect(section.x + section.width).toBeLessThanOrEqual(a.x)
+    await expect(page.getByTestId('channel-header-0').getByTestId('channel-down')).toHaveAttribute('title', 'Move right')
+
+    // Drawing still works: a drag down the column paints a run. Collapse the drawer for room.
+    await page.getByTestId('toggle-settings').click()
+    const from = await box('cell-0-0-2')
+    const to = await box('cell-0-0-5')
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 })
+    await page.mouse.up()
+    for (const step of [2, 3, 4, 5]) await expect(cell(0, step)).toHaveAttribute('aria-checked', 'true')
+    await expect(cell(0, 1)).toHaveAttribute('aria-checked', 'false')
+    await expect(cell(0, 6)).toHaveAttribute('aria-checked', 'false')
+    await page.getByTestId('toggle-settings').click()
+
+    // Bottom to top: the headers sit at the bottom and the song climbs from them, start in view.
+    await select.selectOption('btt')
+    await expect(grid).toHaveAttribute('data-orientation', 'btt')
+    a = await box('cell-0-0-0')
+    b = await box('cell-0-0-1')
+    c = await box('cell-1-0-0')
+    head = await box('channel-header-0')
+    expect(b.y).toBeLessThan(a.y)
+    expect(b.x).toBe(a.x)
+    expect(c.x).toBeGreaterThan(a.x)
+    expect(head.y).toBeGreaterThanOrEqual(a.y + a.height - 1)
+    await expect(cell(0, 0)).toBeInViewport()
+    await expect(page.getByTestId('channel-header-0')).toBeInViewport()
+    await expect(cell(0, 5)).toHaveAttribute('aria-checked', 'true')
+
+    // The choice is a browser preference: it survives a reload and a different song.
+    await page.reload()
+    await expect(grid).toHaveAttribute('data-orientation', 'btt')
+    await expect(select).toHaveValue('btt')
+    await page.getByTestId('song-browser-tab').click()
+    await page.getByTestId('browser-new-song').click()
+    await expect(grid).toHaveAttribute('data-orientation', 'btt')
+  })
+})

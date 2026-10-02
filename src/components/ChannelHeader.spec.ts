@@ -79,6 +79,26 @@ describe('ChannelHeader', () => {
     expect(otherMute.attributes('title')).toBe('Mute')
   })
 
+  it('points the move buttons sideways when the channel is a column', () => {
+    const store = useSongStore()
+    const channel = store.song.channels[1]!
+    const wrapper = mount(ChannelHeader, {
+      props: { channel, index: 1, total: store.song.channels.length, baseNote: 36, vertical: true },
+    })
+    expect(wrapper.classes()).toContain('vertical')
+    expect(wrapper.get('[data-testid="channel-up"]').attributes('title')).toBe('Move left')
+    expect(wrapper.get('[data-testid="channel-up"]').text()).toBe('←')
+    expect(wrapper.get('[data-testid="channel-down"]').attributes('title')).toBe('Move right')
+    expect(wrapper.get('[data-testid="channel-down"]').text()).toBe('→')
+
+    // In a row the channels are ordered top to bottom.
+    const row = mountAt(1).wrapper
+    expect(row.classes()).not.toContain('vertical')
+    expect(row.get('[data-testid="channel-up"]').attributes('title')).toBe('Move up')
+    expect(row.get('[data-testid="channel-up"]').text()).toBe('↑')
+    expect(row.get('[data-testid="channel-down"]').attributes('title')).toBe('Move down')
+  })
+
   it('moves and removes the channel', async () => {
     const { store, channel, wrapper } = mountFirst()
     expect(wrapper.get('[data-testid="channel-up"]').attributes('disabled')).toBeDefined()

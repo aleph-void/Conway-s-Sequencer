@@ -59,6 +59,12 @@
   --cell-size: 22px;
   --row-height: 36px;
   --row-head-width: 264px;
+  /*
+   * Vertical track orientations (top to bottom, bottom to top) turn every channel into a
+   * column this wide, headed by its name and controls stacked on three lines this tall.
+   */
+  --track-width: 100px;
+  --track-head-height: 92px;
 
   --radius: 6px;
   --radius-lg: 10px;

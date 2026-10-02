@@ -60,6 +60,19 @@ describe('App', () => {
     expect(again.find('[data-testid="module-view"]').exists()).toBe(false)
   })
 
+  it('changes the track orientation from the settings drawer and remembers it', async () => {
+    localStorage.clear()
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    expect(wrapper.get('[data-testid="grid"]').attributes('data-orientation')).toBe('ltr')
+    await wrapper.get('[data-testid="track-orientation"]').setValue('ttb')
+    expect(wrapper.get('[data-testid="grid"]').attributes('data-orientation')).toBe('ttb')
+    expect(wrapper.get('[data-testid="channel-header-0"]').classes()).toContain('vertical')
+
+    const again = mount(App, { global: { plugins: [createPinia()] } })
+    expect(again.get('[data-testid="grid"]').attributes('data-orientation')).toBe('ttb')
+    expect((again.get('[data-testid="track-orientation"]').element as HTMLSelectElement).value).toBe('ttb')
+  })
+
   it('renames the song from the header', async () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } })
     await wrapper.get('[data-testid="song-name"]').setValue('My Patch')

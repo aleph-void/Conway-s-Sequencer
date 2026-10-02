@@ -1,8 +1,9 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
+import { useUiStore } from '../stores/ui'
 import SequencerGrid from './SequencerGrid.vue'
 
 describe('SequencerGrid', () => {
@@ -188,6 +189,88 @@ describe('SequencerGrid', () => {
     for (const c of [...store.song.channels]) store.removeChannel(c.id)
     const again = mount(SequencerGrid)
     expect(again.text()).toContain('Add a channel')
+  })
+
+  describe('track orientation', () => {
+    it('lays the tracks out left to right unless the editor preference says otherwise', async () => {
+      const ui = useUiStore()
+      const wrapper = mount(SequencerGrid)
+      const grid = wrapper.get('[data-testid="grid"]')
+      const header = () => wrapper.get('[data-testid="channel-header-1"]')
+      expect(grid.attributes('data-orientation')).toBe('ltr')
+      expect(grid.classes()).toEqual(expect.arrayContaining(['horizontal', 'orient-ltr']))
+      // Channels are rows: their headers keep the one-line layout and the move buttons point up and down.
+      expect(header().classes()).not.toContain('vertical')
+      expect(header().get('[data-testid="channel-up"]').attributes('title')).toBe('Move up')
+
+      ui.setTrackOrientation('rtl')
+      await wrapper.vm.$nextTick()
+      expect(grid.attributes('data-orientation')).toBe('rtl')
+      expect(grid.classes()).toEqual(expect.arrayContaining(['horizontal', 'orient-rtl']))
+      expect(grid.classes()).not.toContain('orient-ltr')
+      expect(header().classes()).not.toContain('vertical')
+
+      ui.setTrackOrientation('ttb')
+      await wrapper.vm.$nextTick()
+      expect(grid.attributes('data-orientation')).toBe('ttb')
+      expect(grid.classes()).toEqual(expect.arrayContaining(['vertical', 'orient-ttb']))
+      expect(grid.classes()).not.toContain('horizontal')
+      // Channels are columns ordered left to right.
+      expect(header().classes()).toContain('vertical')
+      expect(header().get('[data-testid="channel-up"]').attributes('title')).toBe('Move left')
+      expect(header().get('[data-testid="channel-down"]').attributes('title')).toBe('Move right')
+
+      ui.setTrackOrientation('btt')
+      await wrapper.vm.$nextTick()
+      expect(grid.classes()).toEqual(expect.arrayContaining(['vertical', 'orient-btt']))
+      expect(header().classes()).toContain('vertical')
+      // The cells themselves are the same elements whichever way they run.
+      expect(wrapper.findAll('[data-testid="channel-row-0"] .cell')).toHaveLength(64)
+    })
+
+    it('tells the section, bar and loop cells how many steps they span', () => {
+      const store = useSongStore()
+      store.addSection({ bars: 2 })
+      const wrapper = mount(SequencerGrid)
+      const span = (selector: string) =>
+        (wrapper.get(selector).element as HTMLElement).style.getPropertyValue('--span')
+      expect(span('[data-testid="grid-section-0"]')).toBe('64')
+      expect(span('[data-testid="grid-section-1"]')).toBe('32')
+      expect(span('[data-testid="loop-bar-0"]')).toBe('16')
+      expect(span('[data-testid="loop-bar-5"]')).toBe('16')
+      expect(wrapper.findAll('.bar-label').map((b) => (b.element as HTMLElement).style.getPropertyValue('--span'))).toEqual(
+        Array(6).fill('16'),
+      )
+    })
+
+    it('scrolls back to the start of the song when the orientation changes', async () => {
+      const ui = useUiStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const el = wrapper.get('[data-testid="grid"]').element as HTMLElement
+      // jsdom does no layout, so record the scroll positions being written instead.
+      const writes: Array<[string, number]> = []
+      Object.defineProperty(el, 'scrollLeft', { configurable: true, get: () => 0, set: (v: number) => writes.push(['left', v]) })
+      Object.defineProperty(el, 'scrollTop', { configurable: true, get: () => 0, set: (v: number) => writes.push(['top', v]) })
+      Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 1234 })
+
+      // Bottom to top: the start is at the bottom edge, so scroll all the way down.
+      ui.setTrackOrientation('btt')
+      await flushPromises()
+      expect(writes).toEqual([
+        ['left', 0],
+        ['top', 1234],
+      ])
+
+      // Right to left: 0 is the right edge of a right-to-left scroller.
+      writes.length = 0
+      ui.setTrackOrientation('rtl')
+      await flushPromises()
+      expect(writes).toEqual([
+        ['left', 0],
+        ['top', 0],
+      ])
+      wrapper.unmount()
+    })
   })
 
   describe('loop strip', () => {
