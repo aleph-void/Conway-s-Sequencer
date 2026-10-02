@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEditorStore } from '../stores/editor'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
@@ -469,16 +469,21 @@ describe('SequencerGrid', () => {
       Object.defineProperty(el, 'scrollLeft', { configurable: true, get: () => 0, set: (v: number) => writes.push(['left', v]) })
       Object.defineProperty(el, 'scrollTop', { configurable: true, get: () => 0, set: (v: number) => writes.push(['top', v]) })
       Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 1234 })
+      const scrollIntoView = vi.fn()
+      el.scrollIntoView = scrollIntoView
 
-      // Bottom to top: the start is at the bottom edge, so scroll all the way down.
+      // Bottom to top: the start is at the bottom edge, so scroll all the way down, and
+      // bring the page down to the foot of the grid, since vertical tracks run down the page.
       ui.setTrackOrientation('btt')
       await flushPromises()
       expect(writes).toEqual([
         ['left', 0],
         ['top', 1234],
       ])
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'end' })
 
-      // Right to left: 0 is the right edge of a right-to-left scroller.
+      // Right to left: 0 is the right edge of a right-to-left scroller, and the page stays put.
       writes.length = 0
       ui.setTrackOrientation('rtl')
       await flushPromises()
@@ -486,6 +491,7 @@ describe('SequencerGrid', () => {
         ['left', 0],
         ['top', 0],
       ])
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
       wrapper.unmount()
     })
   })

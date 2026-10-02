@@ -64,13 +64,21 @@ describe('App', () => {
     localStorage.clear()
     const wrapper = mount(App, { global: { plugins: [createPinia()] } })
     expect(wrapper.get('[data-testid="grid"]').attributes('data-orientation')).toBe('ltr')
+    expect(wrapper.get('.app').classes()).not.toContain('tracks-vertical')
     await wrapper.get('[data-testid="track-orientation"]').setValue('ttb')
     expect(wrapper.get('[data-testid="grid"]').attributes('data-orientation')).toBe('ttb')
     expect(wrapper.get('[data-testid="channel-header-0"]').classes()).toContain('vertical')
+    // Vertical tracks run down the page: the shell lets go of the viewport height.
+    expect(wrapper.get('.app').classes()).toContain('tracks-vertical')
+    await wrapper.get('[data-testid="track-orientation"]').setValue('rtl')
+    expect(wrapper.get('.app').classes()).not.toContain('tracks-vertical')
+    await wrapper.get('[data-testid="track-orientation"]').setValue('btt')
+    expect(wrapper.get('.app').classes()).toContain('tracks-vertical')
 
     const again = mount(App, { global: { plugins: [createPinia()] } })
-    expect(again.get('[data-testid="grid"]').attributes('data-orientation')).toBe('ttb')
-    expect((again.get('[data-testid="track-orientation"]').element as HTMLSelectElement).value).toBe('ttb')
+    expect(again.get('[data-testid="grid"]').attributes('data-orientation')).toBe('btt')
+    expect(again.get('.app').classes()).toContain('tracks-vertical')
+    expect((again.get('[data-testid="track-orientation"]').element as HTMLSelectElement).value).toBe('btt')
   })
 
   it('renames the song from the header', async () => {

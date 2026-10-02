@@ -99,7 +99,10 @@ backend, and songs autosave to local storage.
 - **Track orientation.** An Editor setting in the drawer turns the grid: tracks
   run left to right (the default), right to left, top to bottom or bottom to
   top. Sideways, every channel becomes a column headed by its name and
-  controls, and the section, bar and loop strips run down the left edge. The
+  controls, and the section, bar and loop strips run down the left edge. A
+  song is far taller than it is wide that way, so vertical tracks run down the
+  page rather than scrolling inside the grid: the page grows with the song and
+  scrolls as a whole, with the module view keeping its place beside it. The
   choice is a preference of the browser, kept across songs and reloads; it is
   not part of the song file.
 - **Works on tablets and phones.** Below desktop width the page scrolls

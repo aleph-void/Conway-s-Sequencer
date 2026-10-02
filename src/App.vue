@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import MidiPanel from './components/MidiPanel.vue'
 import TransportBar from './components/TransportBar.vue'
@@ -11,16 +12,18 @@ import SongIO from './components/SongIO.vue'
 import SongBrowser from './components/SongBrowser.vue'
 import BrandLogo from './components/BrandLogo.vue'
 import PwaStatus from './components/PwaStatus.vue'
-import { useUiStore } from './stores/ui'
+import { isVerticalOrientation, useUiStore } from './stores/ui'
 import { useFullscreen } from './composables/useFullscreen'
 
 const ui = useUiStore()
 const fullscreen = useFullscreen()
 const year = new Date().getFullYear()
+/** Vertical tracks run down the page instead of scrolling inside the grid (see the styles). */
+const tracksVertical = computed(() => isVerticalOrientation(ui.trackOrientation))
 </script>
 
 <template>
-  <div class="app">
+  <div class="app" :class="{ 'tracks-vertical': tracksVertical }">
     <AppHeader />
     <SongBrowser />
     <main class="layout">
@@ -237,6 +240,36 @@ button.active .glyph {
     min-height: 180px;
     max-height: 45vh;
     overflow: auto;
+  }
+}
+
+/*
+ * Vertical tracks (top to bottom, bottom to top) run down the page. A song is far taller
+ * than it is wide that way, so rather than scroll it inside a viewport-sized box the
+ * shell grows with the grid and the page scrolls, as it does below desktop width. The
+ * grid's own scroller then only ever scrolls sideways, across the channels.
+ */
+.app.tracks-vertical {
+  height: auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.tracks-vertical .drawer {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+/* The module view keeps its place at the top of the window while the song scrolls past. */
+@media (min-width: 1000px) {
+  .tracks-vertical .workspace > :last-child:not(:first-child) {
+    position: sticky;
+    top: 12px;
+    align-self: flex-start;
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
   }
 }
 
