@@ -37,18 +37,52 @@ function dismiss() {
   needRefresh.value = false
 }
 
-function reload() {
-  void updateServiceWorker(true)
+/** How long to give the waiting worker to take over before reloading regardless. */
+const RELOAD_FALLBACK_MS = 2500
+
+const reloading = ref(false)
+let reloadTimer: ReturnType<typeof setTimeout> | undefined
+let reloaded = false
+
+function reloadPage() {
+  if (reloaded) return
+  reloaded = true
+  clearTimeout(reloadTimer)
+  window.location.reload()
 }
+
+/**
+ * Activate the waiting build and reload into it. The register script only reloads on its
+ * own when a worker already controlled the page at registration time, so a hard refresh
+ * or a first visit that then receives an update would swap the worker but never reload.
+ * Reload ourselves as soon as the new worker takes control, and after a short grace
+ * period in any case (the waiting worker may already have been activated by another tab).
+ */
+function reload() {
+  if (reloading.value) return
+  reloading.value = true
+  navigator.serviceWorker?.addEventListener('controllerchange', reloadPage, { once: true })
+  reloadTimer = setTimeout(reloadPage, RELOAD_FALLBACK_MS)
+  updateServiceWorker(true).catch(reloadPage)
+}
+
+onBeforeUnmount(() => {
+  clearTimeout(reloadTimer)
+  navigator.serviceWorker?.removeEventListener('controllerchange', reloadPage)
+})
 </script>
 
 <template>
   <span v-if="!online" class="offline-badge mono" role="status" data-testid="offline-badge">Offline</span>
   <div v-if="showToast" class="toast panel" role="status" aria-live="polite" data-testid="pwa-toast">
-    <span v-if="needRefresh" data-testid="pwa-message">A new version of Conway's Sequencer is ready.</span>
-    <span v-else data-testid="pwa-message">Ready to work offline.</span>
-    <button v-if="needRefresh" class="primary" data-testid="pwa-reload" @click="reload">Reload</button>
-    <button data-testid="pwa-dismiss" @click="dismiss">Dismiss</button>
+    <span v-if="needRefresh" class="message" data-testid="pwa-message">A new version of Conway's Sequencer is ready.</span>
+    <span v-else class="message" data-testid="pwa-message">Ready to work offline.</span>
+    <div class="actions">
+      <button v-if="needRefresh" class="primary" :disabled="reloading" data-testid="pwa-reload" @click="reload">
+        {{ reloading ? 'Reloading…' : 'Reload' }}
+      </button>
+      <button :disabled="reloading" data-testid="pwa-dismiss" @click="dismiss">Dismiss</button>
+    </div>
   </div>
 </template>
 
@@ -76,10 +110,38 @@ function reload() {
   z-index: 20;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 10px 14px;
   border-color: var(--accent-border);
   box-shadow: var(--shadow-glow);
   font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Phones: the toast spans the width above the footer, with full-width buttons. */
+@media (max-width: 767px) {
+  .toast {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 10px 12px;
+  }
+
+  .message {
+    flex: 1 1 100%;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions button {
+    flex: 1;
+  }
 }
 </style>
