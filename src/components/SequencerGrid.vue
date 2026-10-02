@@ -221,6 +221,10 @@ function begin(
   lastPointerType = event.pointerType || 'mouse'
   if (lastPointerType === 'touch' || event.button !== 0) return
   event.preventDefault()
+  // Cancelling the press keeps the browser from moving focus, so move it to the cell by
+  // hand: otherwise focus stays in whatever drawer field was used last and the copy, cut,
+  // paste and delete shortcuts (which stand down inside text fields) would not fire.
+  ;(event.currentTarget as HTMLElement | null)?.focus({ preventScroll: true })
   if (event.shiftKey) {
     selectingCells.value = true
     editor.selectCell({ channel: channelIndex, step: globalStep })

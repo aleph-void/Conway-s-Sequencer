@@ -240,6 +240,34 @@ describe('SequencerGrid', () => {
       wrapper.unmount()
     })
 
+    it('moves focus to the pressed cell so the shortcuts work after a drawer field was used', async () => {
+      const editor = useEditorStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      // Focus left in a text field, as after typing a tempo in the drawer.
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      input.focus()
+      expect(document.activeElement).toBe(input)
+
+      // The cancelled press would leave focus there, so the grid moves it to the cell.
+      await cell(wrapper, 1, 2).trigger('pointerdown', { button: 0, buttons: 1, shiftKey: true })
+      expect(document.activeElement).toBe(cell(wrapper, 1, 2).element)
+      window.dispatchEvent(new Event('pointerup'))
+      expect(key({ key: 'c', ctrlKey: true }).defaultPrevented).toBe(true)
+      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[]] })
+
+      // A plain press moves it too; a finger does not (the browser handles focus for a tap).
+      input.focus()
+      await cell(wrapper, 2, 3).trigger('pointerdown', { button: 0, buttons: 1 })
+      expect(document.activeElement).toBe(cell(wrapper, 2, 3).element)
+      window.dispatchEvent(new Event('pointerup'))
+      input.focus()
+      await cell(wrapper, 2, 4).trigger('pointerdown', { button: 0, buttons: 1, pointerType: 'touch' })
+      expect(document.activeElement).toBe(input)
+      input.remove()
+      wrapper.unmount()
+    })
+
     it('selects and stretches with Shift+Enter or Shift+Space on a cell', async () => {
       const store = useSongStore()
       const editor = useEditorStore()
