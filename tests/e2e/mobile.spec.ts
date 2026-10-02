@@ -31,7 +31,8 @@ test.describe('phone layout', () => {
     await page.reload()
     await expect(page.getByTestId('settings-drawer')).toBeVisible()
 
-    // The module view stacks above the grid at full width without widening the page either.
+    // The module view, switched on from the drawer's editor settings, stacks above the grid at
+    // full width without widening the page either.
     await page.getByTestId('toggle-module-view').tap()
     await expect(page.getByTestId('module-view')).toBeVisible()
     await expect(page.getByTestId('module-output-64')).toBeVisible()

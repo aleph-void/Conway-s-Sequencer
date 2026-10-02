@@ -65,8 +65,8 @@ backend, and songs autosave to local storage.
   song, duplicate one with ⧉ (the copy, named "… copy", opens), or delete one
   with × after confirming in a dialog. "New" and "Import JSON" add a song to
   the browser rather than replacing the one you have open.
-- **Module view.** A "Module" button in the toolbar shows a picture of the
-  Conway's Game panel beside the grid: its 64 outputs in the module's 8x8
+- **Module view.** A "Module view" box in the drawer's Editor settings shows a
+  picture of the Conway's Game panel beside the grid: its 64 outputs in the 8x8
   layout, each ringed in the colour of the track assigned to it, with the x16
   clock and the play gate marked. While the song plays, every output that is
   high right now lights up, following the cursor frame by frame, so you can
@@ -93,9 +93,10 @@ backend, and songs autosave to local storage.
   version has been deployed a toast offers to reload into it; nothing swaps
   underneath you mid-performance.
 - **Editor-first layout.** The grid fills the viewport below a one-line
-  toolbar (MIDI output + transport); sections, module settings and song files
-  live in a collapsible settings drawer whose state is remembered. A Full
-  screen button puts the whole GUI in the browser's full-screen mode.
+  toolbar (MIDI output + transport); sections, module settings, editor settings
+  and song files live in a collapsible settings drawer whose state is
+  remembered. A Full screen button puts the whole GUI in the browser's
+  full-screen mode.
 - **Track orientation.** An Editor setting in the drawer turns the grid: tracks
   run left to right (the default), right to left, top to bottom or bottom to
   top. Sideways, every channel becomes a column headed by its name and

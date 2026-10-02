@@ -44,17 +44,6 @@ const tracksVertical = computed(() => isVerticalOrientation(ui.trackOrientation)
             Settings
           </button>
           <button
-            :class="{ active: ui.moduleViewOpen }"
-            :aria-pressed="ui.moduleViewOpen"
-            aria-controls="module-view"
-            :title="ui.moduleViewOpen ? 'Hide the module view' : 'Show the module\'s outputs and which are high'"
-            data-testid="toggle-module-view"
-            @click="ui.toggleModuleView()"
-          >
-            <span class="glyph" aria-hidden="true">▦</span>
-            Module
-          </button>
-          <button
             v-if="fullscreen.supported"
             :class="{ active: fullscreen.active.value }"
             :aria-pressed="fullscreen.active.value"

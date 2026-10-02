@@ -59,10 +59,13 @@ test.describe('shell', () => {
 
   test('shows the module view with its outputs lighting up as the song plays', async ({ midiPage: page }) => {
     await expect(page.getByTestId('module-view')).toHaveCount(0)
-    await page.getByTestId('toggle-module-view').click()
+    // The switch sits with the editor settings in the drawer, not in the toolbar.
+    const toggle = page.getByTestId('editor-panel').getByTestId('toggle-module-view')
+    await expect(toggle).not.toBeChecked()
+    await toggle.check()
     const view = page.getByTestId('module-view')
     await expect(view).toBeVisible()
-    await expect(page.getByTestId('toggle-module-view')).toHaveAttribute('aria-pressed', 'true')
+    await expect(toggle).toBeChecked()
     await expect(view.locator('[data-testid^="module-output-"]')).toHaveCount(64)
     const output = (n: number) => page.getByTestId(`module-output-${n}`)
     await expect(output(1)).toHaveAttribute('title', /Output 1 · note 36 \(C2\) · Out 1 · low/)
@@ -97,10 +100,14 @@ test.describe('shell', () => {
     await expect(output(1)).toHaveAttribute('data-high', 'false')
     await expect(page.getByTestId('module-high')).toHaveText('none')
 
-    // The choice survives a reload, and the view can be hidden again.
+    // The view stays up with the drawer closed; the choice survives a reload, and the view can be hidden again.
+    await page.getByTestId('toggle-settings').click()
+    await expect(page.getByTestId('toggle-module-view')).toHaveCount(0)
+    await expect(page.getByTestId('module-view')).toBeVisible()
     await page.reload()
     await expect(page.getByTestId('module-view')).toBeVisible()
-    await page.getByTestId('toggle-module-view').click()
+    await page.getByTestId('toggle-settings').click()
+    await page.getByTestId('toggle-module-view').uncheck()
     await expect(page.getByTestId('module-view')).toHaveCount(0)
   })
 

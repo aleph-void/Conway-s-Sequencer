@@ -34,4 +34,23 @@ describe('EditorPanel', () => {
     expect((select.element as HTMLSelectElement).value).toBe('rtl')
     expect(wrapper.text()).toContain('not part of the song')
   })
+
+  it('switches the module view on and off and remembers it', async () => {
+    const ui = useUiStore()
+    const wrapper = mount(EditorPanel)
+    const box = wrapper.get('[data-testid="toggle-module-view"]')
+    expect((box.element as HTMLInputElement).checked).toBe(false)
+    expect(wrapper.get('.check').attributes('title')).toMatch(/^Show/)
+
+    await box.setValue(true)
+    expect(ui.moduleViewOpen).toBe(true)
+    await nextTick()
+    expect(JSON.parse(localStorage.getItem(UI_STORAGE_KEY)!)).toMatchObject({ moduleViewOpen: true })
+    expect(wrapper.get('.check').attributes('title')).toMatch(/^Hide/)
+
+    // The box follows the store too.
+    ui.setModuleViewOpen(false)
+    await nextTick()
+    expect((box.element as HTMLInputElement).checked).toBe(false)
+  })
 })

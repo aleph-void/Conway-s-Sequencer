@@ -40,23 +40,33 @@ describe('App', () => {
     expect(again.find('[data-testid="sections-table"]').exists()).toBe(true)
   })
 
-  it('shows the module view on request and remembers it', async () => {
+  it('shows the module view from the settings drawer and remembers it', async () => {
     localStorage.clear()
     const wrapper = mount(App, { global: { plugins: [createPinia()] } })
-    const toggle = wrapper.get('[data-testid="toggle-module-view"]')
-    expect(toggle.attributes('aria-pressed')).toBe('false')
+    // The switch lives with the other editor settings, not in the toolbar.
+    const toggle = wrapper.get('[data-testid="editor-panel"] [data-testid="toggle-module-view"]')
+    expect(wrapper.find('.toolbar [data-testid="toggle-module-view"]').exists()).toBe(false)
+    expect((toggle.element as HTMLInputElement).checked).toBe(false)
     expect(wrapper.find('[data-testid="module-view"]').exists()).toBe(false)
 
-    await toggle.trigger('click')
-    expect(toggle.attributes('aria-pressed')).toBe('true')
+    await toggle.setValue(true)
+    expect((toggle.element as HTMLInputElement).checked).toBe(true)
     expect(wrapper.find('[data-testid="module-view"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-testid^="module-output-"]')).toHaveLength(64)
     // The grid stays alongside it.
     expect(wrapper.find('[data-testid="grid"]').exists()).toBe(true)
 
+    // The view stays up when the drawer that holds its switch is closed.
+    await wrapper.get('[data-testid="toggle-settings"]').trigger('click')
+    expect(wrapper.find('[data-testid="toggle-module-view"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="module-view"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="toggle-settings"]').trigger('click')
+
     const again = mount(App, { global: { plugins: [createPinia()] } })
     expect(again.find('[data-testid="module-view"]').exists()).toBe(true)
-    await again.get('[data-testid="toggle-module-view"]').trigger('click')
+    const againToggle = again.get('[data-testid="toggle-module-view"]')
+    expect((againToggle.element as HTMLInputElement).checked).toBe(true)
+    await againToggle.setValue(false)
     expect(again.find('[data-testid="module-view"]').exists()).toBe(false)
   })
 

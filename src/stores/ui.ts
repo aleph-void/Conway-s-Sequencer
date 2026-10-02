@@ -40,8 +40,9 @@ export const PHONE_MEDIA_QUERY = '(max-width: 767px)'
 /**
  * The drawer is open on desktops and tablets, where it shares the viewport with the grid, and
  * closed on phones, where it would push the grid below the fold until the user asks for it.
- * The module view is a debugging aid, so it starts hidden everywhere. Tracks run left to
- * right, as on a piano roll, until the user picks another orientation.
+ * The module view is a debugging aid, so it starts hidden everywhere until it is switched on
+ * in the drawer's Editor settings. Tracks run left to right, as on a piano roll, until the
+ * user picks another orientation.
  */
 function defaults(): UiState {
   const phone =
@@ -70,9 +71,10 @@ function readStored(): UiState {
 
 /**
  * Layout preferences that are not part of the song: whether the settings drawer (sections,
- * module settings, song file I/O) is open, whether the module view (a live picture of the
- * module's outputs) is shown, and which way the channel tracks run in the grid. Persisted
- * so the editor comes back the way it was left, whichever song is open.
+ * module settings, editor settings, song file I/O) is open, whether the module view (a live
+ * picture of the module's outputs, switched on from the editor settings) is shown, and which
+ * way the channel tracks run in the grid. Persisted so the editor comes back the way it was
+ * left, whichever song is open.
  */
 export const useUiStore = defineStore('ui', () => {
   const stored = readStored()
