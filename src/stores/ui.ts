@@ -7,19 +7,31 @@ interface UiState {
   settingsOpen: boolean
 }
 
-const DEFAULTS: UiState = { settingsOpen: true }
+/** Matches the phone breakpoint in `style.css`; wider screens start with the drawer open. */
+export const PHONE_MEDIA_QUERY = '(max-width: 767px)'
+
+/**
+ * Open on desktops and tablets, where the drawer shares the viewport with the grid; closed
+ * on phones, where it would push the grid below the fold until the user asks for it.
+ */
+function defaults(): UiState {
+  const phone =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(PHONE_MEDIA_QUERY).matches
+  return { settingsOpen: !phone }
+}
 
 function readStored(): UiState {
-  if (typeof localStorage === 'undefined') return { ...DEFAULTS }
+  const fallback = defaults()
+  if (typeof localStorage === 'undefined') return fallback
   try {
     const raw = localStorage.getItem(UI_STORAGE_KEY)
-    if (!raw) return { ...DEFAULTS }
+    if (!raw) return fallback
     const parsed = JSON.parse(raw) as Partial<UiState>
     return {
-      settingsOpen: typeof parsed.settingsOpen === 'boolean' ? parsed.settingsOpen : DEFAULTS.settingsOpen,
+      settingsOpen: typeof parsed.settingsOpen === 'boolean' ? parsed.settingsOpen : fallback.settingsOpen,
     }
   } catch {
-    return { ...DEFAULTS }
+    return fallback
   }
 }
 

@@ -1,12 +1,16 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import { UI_STORAGE_KEY, useUiStore } from './ui'
+import { PHONE_MEDIA_QUERY, UI_STORAGE_KEY, useUiStore } from './ui'
 
 describe('ui store', () => {
   beforeEach(() => {
     localStorage.clear()
     setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('opens the settings drawer by default and persists toggles', async () => {
@@ -19,6 +23,17 @@ describe('ui store', () => {
     ui.setSettingsOpen(true)
     await nextTick()
     expect(JSON.parse(localStorage.getItem(UI_STORAGE_KEY)!)).toEqual({ settingsOpen: true })
+  })
+
+  it('starts with the drawer closed on a phone-sized screen, unless a preference is stored', () => {
+    const matchMedia = vi.fn((query: string) => ({ matches: query === PHONE_MEDIA_QUERY }) as MediaQueryList)
+    vi.stubGlobal('matchMedia', matchMedia)
+    expect(useUiStore().settingsOpen).toBe(false)
+    expect(matchMedia).toHaveBeenCalledWith(PHONE_MEDIA_QUERY)
+
+    setActivePinia(createPinia())
+    localStorage.setItem(UI_STORAGE_KEY, JSON.stringify({ settingsOpen: true }))
+    expect(useUiStore().settingsOpen).toBe(true)
   })
 
   it('restores a stored preference', () => {

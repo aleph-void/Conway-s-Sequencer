@@ -258,3 +258,47 @@ label > span {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/*
+ * Responsive layout.
+ * Desktop and tablet share the viewport-sized shell; phones (below 768px) scroll as a page
+ * with the toolbar and drawer stacked. Touch screens get bigger targets whatever the width.
+ */
+
+/* Fingers: wider steps and taller rows so a tap lands on one cell, and 36px controls. */
+@media (pointer: coarse) {
+  :root {
+    --cell-size: 26px;
+    --row-height: 44px;
+  }
+
+  button {
+    min-height: 36px;
+  }
+
+  input:not([type='checkbox']):not([type='file']),
+  select {
+    min-height: 36px;
+  }
+
+  input[type='checkbox'] {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* Phones: a narrower channel column (its controls stack on two lines) and tighter panels. */
+@media (max-width: 767px) {
+  :root {
+    --row-head-width: 164px;
+    --row-height: 58px;
+  }
+
+  .panel {
+    padding: 12px;
+  }
+
+  .row {
+    gap: 8px;
+  }
+}

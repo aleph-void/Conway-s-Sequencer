@@ -19,6 +19,7 @@ iteration was built against, with what shipped and what is left.
 | Draw "on" bars like a piano roll | Grid: rows = channels, columns = every step of every section. Click toggles, drag paints, keyboard toggles. |
 | Comprehensive tests, GitHub Actions → GitHub Pages | Vitest unit/component tests with coverage thresholds, Playwright e2e against the built app with a fake Web MIDI, one workflow that tests then deploys. |
 | Editor-first layout | The shell is viewport-sized. A one-line toolbar holds the MIDI output picker and transport; sections, module settings and song I/O sit in a collapsible drawer (`stores/ui.ts`, persisted). The gate grid flexes to fill the remaining height. |
+| Tablets and phones | Below 1200px wide (or 520px tall) the shell scrolls as a page instead of being viewport-sized (`App.vue`). Below 768px (`style.css`, `App.vue`) phones get the toolbar and drawer stacked, a 164px channel column whose controls wrap onto two lines, and the drawer closed by default. `(pointer: coarse)` widens steps, heightens rows and gives 36px controls. In the grid a touch tap toggles on click and a swipe pans (`touch-action: pan-x pan-y`); mouse and pen still paint from pointerdown. |
 | alephvoid.com branding | Aleph Void logo mark (from the alephvoid.com repo) in the header and footer, page title, favicon; the site's near-black palette with the violet accent (`#6d28d9` / `#8b5cf6`), Inter for UI text and JetBrains Mono for labels. Tokens live in `src/style.css`. |
 
 ### Module facts the design relies on

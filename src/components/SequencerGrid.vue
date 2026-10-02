@@ -12,6 +12,13 @@ const transport = useTransportStore()
 /** Painting state: while the pointer is down we set every entered cell to `paintValue`. */
 const painting = ref(false)
 const paintValue = ref(true)
+/**
+ * Pointer type of the last pointerdown on a cell. A mouse or pen draws from pointerdown
+ * and paints across the cells it enters; a finger cannot do that (touch pointers are
+ * captured by the first cell, and a drag has to scroll the grid), so a touch toggles on
+ * the tap's click instead and a swipe is left to the browser.
+ */
+let lastPointerType = 'mouse'
 
 const sections = computed(() =>
   store.timeline.map((timing) => {
@@ -28,7 +35,8 @@ const sections = computed(() =>
 const currentStep = computed(() => transport.currentStep)
 
 function begin(sectionId: string, channelId: string, step: number, event: PointerEvent) {
-  if (event.button !== 0) return
+  lastPointerType = event.pointerType || 'mouse'
+  if (lastPointerType === 'touch' || event.button !== 0) return
   event.preventDefault()
   const section = store.sectionById(sectionId)
   if (!section) return
@@ -40,6 +48,12 @@ function begin(sectionId: string, channelId: string, step: number, event: Pointe
 function enter(sectionId: string, channelId: string, step: number, event: PointerEvent) {
   if (!painting.value || (event.buttons & 1) === 0) return
   store.setStep(sectionId, channelId, step, paintValue.value)
+}
+
+/** A finger tap: the browser fires click once it knows the touch was not a scroll. */
+function tap(sectionId: string, channelId: string, step: number) {
+  if (lastPointerType !== 'touch') return
+  store.toggleStep(sectionId, channelId, step)
 }
 
 function keyToggle(sectionId: string, channelId: string, step: number) {
@@ -163,6 +177,7 @@ function cellClass(
             :data-testid="`cell-${channelIndex}-${timing.index}-${step - 1}`"
             @pointerdown="begin(section.id, channel.id, step - 1, $event)"
             @pointerenter="enter(section.id, channel.id, step - 1, $event)"
+            @click="tap(section.id, channel.id, step - 1)"
             @keydown.enter.prevent="keyToggle(section.id, channel.id, step - 1)"
             @keydown.space.prevent="keyToggle(section.id, channel.id, step - 1)"
           />
@@ -197,6 +212,22 @@ function cellClass(
   margin-right: auto;
 }
 
+@media (max-width: 767px) {
+  .head {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+
+  .count {
+    flex: 1 1 100%;
+    order: 3;
+  }
+
+  .head button {
+    margin-left: auto;
+  }
+}
+
 .scroller {
   flex: 1 1 auto;
   min-height: 160px;
@@ -205,7 +236,9 @@ function cellClass(
   border-radius: var(--radius);
   background: var(--bg);
   user-select: none;
-  touch-action: none;
+  /* Fingers pan the grid (a tap toggles a cell); pinch-zoom inside it is disabled. */
+  touch-action: pan-x pan-y;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .header-row,
@@ -309,8 +342,15 @@ function cellClass(
   background: var(--cell-alt);
 }
 
-.cell:hover {
-  filter: brightness(1.35);
+/* Hover feedback only where a pointer can hover; on touch screens it would stick to the last tap. */
+@media (hover: hover) {
+  .cell:hover {
+    filter: brightness(1.35);
+  }
+
+  .cell.on:hover {
+    filter: brightness(1.15);
+  }
 }
 
 .cell.on {
@@ -338,10 +378,6 @@ function cellClass(
 .cell.on.tie-prev {
   --edge-left: 0px;
   border-left-color: transparent;
-}
-
-.cell.on:hover {
-  filter: brightness(1.15);
 }
 
 .cell.playhead {

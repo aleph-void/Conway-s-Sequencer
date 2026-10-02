@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { ref } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const offlineReady = ref(false)
 const needRefresh = ref(false)
@@ -16,12 +16,45 @@ vi.mock('virtual:pwa-register/vue', () => ({
 
 import PwaStatus from './PwaStatus.vue'
 
+/** Mirrors the component's grace period before it reloads without a controller change. */
+const RELOAD_FALLBACK_MS = 2500
+
+/**
+ * jsdom has no service worker container: install a stub `navigator.serviceWorker` that
+ * records listeners, and stub `location` so a reload is observable instead of fatal.
+ */
+function fakeServiceWorkerContainer() {
+  const listeners = new Map<string, Set<EventListener>>()
+  const container = {
+    addEventListener: vi.fn((type: string, fn: EventListener) => {
+      if (!listeners.has(type)) listeners.set(type, new Set())
+      listeners.get(type)!.add(fn)
+    }),
+    removeEventListener: vi.fn((type: string, fn: EventListener) => listeners.get(type)?.delete(fn)),
+    dispatch(type: string) {
+      for (const fn of [...(listeners.get(type) ?? [])]) fn(new Event(type))
+    },
+  }
+  Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: container })
+  const reload = vi.fn()
+  vi.stubGlobal('location', { ...window.location, reload })
+  return { container, reload }
+}
+
 describe('PwaStatus', () => {
   beforeEach(() => {
     offlineReady.value = false
     needRefresh.value = false
     updateServiceWorker.mockClear()
+    updateServiceWorker.mockImplementation(() => Promise.resolve())
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    // Back to jsdom's default: no service worker container at all.
+    delete (navigator as { serviceWorker?: unknown }).serviceWorker
   })
 
   it('shows nothing while online with nothing to report', () => {
@@ -50,6 +83,75 @@ describe('PwaStatus', () => {
 
     await wrapper.get('[data-testid="pwa-reload"]').trigger('click')
     expect(updateServiceWorker).toHaveBeenCalledWith(true)
+  })
+
+  it('reloads the page once the new worker takes control, exactly once', async () => {
+    vi.useFakeTimers()
+    const { container, reload } = fakeServiceWorkerContainer()
+    const wrapper = mount(PwaStatus)
+    needRefresh.value = true
+    await wrapper.vm.$nextTick()
+
+    const button = wrapper.get('[data-testid="pwa-reload"]')
+    await button.trigger('click')
+    expect(updateServiceWorker).toHaveBeenCalledWith(true)
+    expect(button.text()).toBe('Reloading…')
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="pwa-dismiss"]').attributes('disabled')).toBeDefined()
+    expect(container.addEventListener).toHaveBeenCalledWith('controllerchange', expect.any(Function), { once: true })
+    // Nothing happens until the browser swaps the controlling worker…
+    expect(reload).not.toHaveBeenCalled()
+    container.dispatch('controllerchange')
+    expect(reload).toHaveBeenCalledTimes(1)
+    // …and the fallback timer does not reload a second time.
+    vi.advanceTimersByTime(RELOAD_FALLBACK_MS * 2)
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(updateServiceWorker).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloads anyway when no controller change arrives in time', async () => {
+    vi.useFakeTimers()
+    const { reload } = fakeServiceWorkerContainer()
+    const wrapper = mount(PwaStatus)
+    needRefresh.value = true
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-testid="pwa-reload"]').trigger('click')
+
+    vi.advanceTimersByTime(RELOAD_FALLBACK_MS - 1)
+    expect(reload).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloads when activating the waiting worker fails', async () => {
+    vi.useFakeTimers()
+    const { reload } = fakeServiceWorkerContainer()
+    updateServiceWorker.mockImplementation(() => Promise.reject(new Error('no waiting worker')))
+    const wrapper = mount(PwaStatus)
+    needRefresh.value = true
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-testid="pwa-reload"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('works without a service worker container and cleans up its listener on unmount', async () => {
+    vi.useFakeTimers()
+    const reload = vi.fn()
+    vi.stubGlobal('location', { ...window.location, reload })
+    expect(navigator.serviceWorker).toBeUndefined()
+    const wrapper = mount(PwaStatus)
+    needRefresh.value = true
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-testid="pwa-reload"]').trigger('click')
+    vi.advanceTimersByTime(RELOAD_FALLBACK_MS)
+    expect(reload).toHaveBeenCalledTimes(1)
+
+    const { container } = fakeServiceWorkerContainer()
+    const again = mount(PwaStatus)
+    await again.get('[data-testid="pwa-reload"]').trigger('click')
+    again.unmount()
+    expect(container.removeEventListener).toHaveBeenCalledWith('controllerchange', expect.any(Function))
   })
 
   it('shows an offline badge that follows the browser connectivity events', async () => {
