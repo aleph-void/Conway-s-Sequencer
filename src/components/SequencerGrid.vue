@@ -1,8 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { rangeContains } from '../core/clipboard'
 import { trackHue } from '../core/colors'
-import { MAX_CHANNELS, clamp, isChannelSilenced, isStepOn } from '../core/song'
+import {
+  MAX_CHANNELS,
+  MAX_DIVISION,
+  MIN_DIVISION,
+  cellDivision,
+  clamp,
+  isChannelSilenced,
+  isStepOn,
+  type Section,
+} from '../core/song'
 import { useEditorStore } from '../stores/editor'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
@@ -150,6 +159,13 @@ function seekFromHeader(startStep: number, span: number, event: MouseEvent) {
   transport.seekToStep(startStep + clamp(Math.floor(fraction * span), 0, span - 1))
 }
 
+/** What a cell is called to a screen reader; a divided one says how many gates it fires. */
+function cellLabel(channelName: string, section: Section, channelId: string, step: number): string {
+  const base = `${channelName}, ${section.name}, step ${step + 1}`
+  const division = cellDivision(section, channelId, step)
+  return division > MIN_DIVISION ? `${base}, divided into ${division}` : base
+}
+
 /** Enter or Space on a header puts the cursor at its start. */
 function seekToHeader(startStep: number) {
   transport.seekToStep(startStep)
@@ -227,6 +243,7 @@ const pasteBarsTitle = computed(() => {
  * block; the same with Shift for the selected bars.
  */
 function onKey(event: KeyboardEvent) {
+  if (event.defaultPrevented) return
   const target = event.target as HTMLElement | null
   const tag = target?.tagName
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || target?.isContentEditable) return
@@ -310,20 +327,172 @@ function end() {
   selectingCells.value = false
 }
 
+// ---- dividing cells (the context menu) ------------------------------------------
+/**
+ * A right-click (or the Menu key / Shift+F10) on a cell opens a menu that divides it: the
+ * step then fires 1 to MAX_DIVISION gates back to back inside it instead of one (see
+ * `Section.divisions`), and 1 makes it a plain gate again. A cell that is off is turned on.
+ * On a cell inside the selected block the choice applies to every gate in the block (cells
+ * that are off stay off), so a run of cells can be divided at once.
+ */
+const DIVISION_CHOICES = Array.from({ length: MAX_DIVISION - MIN_DIVISION + 1 }, (_, i) => MIN_DIVISION + i)
+
+interface MenuTarget {
+  sectionId: string
+  channelId: string
+  step: number
+  channelIndex: number
+  globalStep: number
+  /** The cell the menu was opened from, so focus can go back to it. */
+  cell: HTMLElement
+}
+
+const menu = ref<HTMLElement | null>(null)
+const menuTarget = ref<MenuTarget | null>(null)
+const menuPosition = ref({ x: 0, y: 0 })
+const menuLabelId = useId()
+
+/** Whether the menu's choice applies to the selected block rather than the one cell. */
+const menuOnSelection = computed(() => {
+  const target = menuTarget.value
+  const range = selection.value
+  return target !== null && range !== null && rangeContains(range, target.channelIndex, target.globalStep)
+})
+
+/** What is divided: the gates of the selected block, or the one cell. */
+const menuTitle = computed(() => {
+  const target = menuTarget.value
+  if (!target) return ''
+  if (menuOnSelection.value) return `Divide the gates in the selected block (${selectionLabel.value})`
+  const channel = store.channelById(target.channelId)
+  const section = store.sectionById(target.sectionId)
+  return `Divide ${channel?.name ?? 'the cell'}, ${section?.name ?? ''} step ${target.step + 1}`
+})
+
+/** The divisions the target holds now: one for a cell, any number for a block of mixed gates. */
+const menuCurrent = computed<number[]>(() => {
+  const target = menuTarget.value
+  if (!target) return []
+  if (menuOnSelection.value) return editor.selectionDivisions
+  const section = store.sectionById(target.sectionId)
+  if (!section || !isStepOn(section, target.channelId, target.step)) return []
+  return [cellDivision(section, target.channelId, target.step)]
+})
+
+function openMenu(
+  sectionId: string,
+  channelId: string,
+  step: number,
+  channelIndex: number,
+  globalStep: number,
+  event: MouseEvent,
+) {
+  event.preventDefault()
+  const cell = event.currentTarget as HTMLElement
+  // The keyboard opens the menu with no pointer position: put it by the cell instead.
+  const rect = cell.getBoundingClientRect()
+  const fromKeyboard = event.clientX === 0 && event.clientY === 0
+  menuPosition.value = fromKeyboard ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: event.clientX, y: event.clientY }
+  menuTarget.value = { sectionId, channelId, step, channelIndex, globalStep, cell }
+  nextTick(() => {
+    keepMenuOnScreen()
+    const current = menuCurrent.value[0] ?? MIN_DIVISION
+    const items = menuItems()
+    ;(items[current - MIN_DIVISION] ?? items[0])?.focus()
+  })
+}
+
+function closeMenu(refocus = true) {
+  const target = menuTarget.value
+  if (!target) return
+  menuTarget.value = null
+  if (refocus) target.cell.focus()
+}
+
+function chooseDivision(division: number) {
+  const target = menuTarget.value
+  if (!target) return
+  if (menuOnSelection.value) editor.divideSelection(division)
+  else store.setDivision(target.sectionId, target.channelId, target.step, division)
+  closeMenu()
+}
+
+function menuItems(): HTMLElement[] {
+  return Array.from(menu.value?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])
+}
+
+/** Keep the menu inside the viewport when it opens near an edge (no layout in jsdom: nothing to do). */
+function keepMenuOnScreen() {
+  const el = menu.value
+  if (!el || typeof window === 'undefined') return
+  const { width, height } = el.getBoundingClientRect()
+  if (!width || !height) return
+  const x = Math.min(menuPosition.value.x, window.innerWidth - width - 4)
+  const y = Math.min(menuPosition.value.y, window.innerHeight - height - 4)
+  menuPosition.value = { x: Math.max(4, x), y: Math.max(4, y) }
+}
+
+/** Arrow keys walk the menu, a digit picks that division outright, Escape closes it. */
+function menuKey(event: KeyboardEvent) {
+  const items = menuItems()
+  const at = items.indexOf(document.activeElement as HTMLElement)
+  const digit = Number(event.key)
+  if (event.key === 'Escape' || event.key === 'Tab') {
+    event.preventDefault()
+    closeMenu()
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    const delta = event.key === 'ArrowDown' ? 1 : -1
+    items[(at + delta + items.length) % items.length]?.focus()
+  } else if (event.key === 'Home' || event.key === 'End') {
+    event.preventDefault()
+    items[event.key === 'Home' ? 0 : items.length - 1]?.focus()
+  } else if (Number.isInteger(digit) && digit >= MIN_DIVISION && digit <= MAX_DIVISION) {
+    event.preventDefault()
+    chooseDivision(digit)
+  }
+}
+
+/** A press anywhere outside the menu closes it; the press itself goes on to do what it does. */
+function onWindowPointerDown(event: PointerEvent) {
+  if (!menuTarget.value) return
+  if (event.target instanceof Node && menu.value?.contains(event.target)) return
+  closeMenu(false)
+}
+
+/** The menu is pinned to where the pointer was: scrolling or resizing would leave it adrift. */
+function onWindowScroll() {
+  if (menuTarget.value) closeMenu(false)
+}
+
+// The cell the menu was opened on may be gone after a change of song or of its shape.
+watch(
+  () => [store.currentId, store.song.channels.length, store.stepTotal],
+  () => closeMenu(false),
+)
+
 onMounted(() => {
   window.addEventListener('pointerup', end)
   window.addEventListener('keydown', onKey)
+  window.addEventListener('pointerdown', onWindowPointerDown, true)
+  window.addEventListener('scroll', onWindowScroll, true)
+  window.addEventListener('resize', onWindowScroll)
   scrollToStart()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('pointerup', end)
   window.removeEventListener('keydown', onKey)
+  window.removeEventListener('pointerdown', onWindowPointerDown, true)
+  window.removeEventListener('scroll', onWindowScroll, true)
+  window.removeEventListener('resize', onWindowScroll)
 })
 
 /**
  * Classes for one cell. Consecutive on-steps are one held gate (see `compileSong`), so a
  * cell whose neighbour within the same section is also on gets `tie-prev` / `tie-next` and
- * the CSS removes the edge between them, drawing the run as a single continuous bar.
+ * the CSS removes the edge between them, drawing the run as a single continuous bar. A
+ * divided cell is its own gates, so it never ties, and gets `divided` (its `--division`
+ * style draws the split).
  */
 function cellClass(
   sectionId: string,
@@ -337,10 +506,13 @@ function cellClass(
   const section = store.sectionById(sectionId)
   const on = section ? isStepOn(section, channelId, step) : false
   const range = selection.value
+  const plain = (at: number) => isStepOn(section!, channelId, at) && cellDivision(section!, channelId, at) === MIN_DIVISION
+  const divided = on && cellDivision(section!, channelId, step) > MIN_DIVISION
   return {
     on,
-    'tie-prev': on && step > 0 && isStepOn(section!, channelId, step - 1),
-    'tie-next': on && step < stepCount - 1 && isStepOn(section!, channelId, step + 1),
+    divided,
+    'tie-prev': on && !divided && step > 0 && plain(step - 1),
+    'tie-next': on && !divided && step < stepCount - 1 && plain(step + 1),
     beat: step % subdivision === 0,
     playhead: globalStep === currentStep.value,
     selected: range !== null && rangeContains(range, channelIndex, globalStep),
@@ -559,14 +731,17 @@ function cellClass(
                   timing.stepCount,
                 )
               "
+              :style="{ '--division': cellDivision(section, channel.id, step - 1) }"
               role="checkbox"
               tabindex="0"
               :aria-checked="isStepOn(section, channel.id, step - 1)"
-              :aria-label="`${channel.name}, ${section.name}, step ${step}`"
+              :aria-label="cellLabel(channel.name, section, channel.id, step - 1)"
+              :data-division="cellDivision(section, channel.id, step - 1)"
               :data-testid="`cell-${channelIndex}-${timing.index}-${step - 1}`"
               @pointerdown="begin(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)"
               @pointerenter="enter(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)"
               @click="tap(section.id, channel.id, step - 1)"
+              @contextmenu="openMenu(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)"
               @keydown.enter.prevent="
                 keyToggle(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)
               "
@@ -578,6 +753,38 @@ function cellClass(
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="menuTarget"
+        ref="menu"
+        class="divide-menu"
+        role="menu"
+        :aria-labelledby="menuLabelId"
+        :style="{ left: `${menuPosition.x}px`, top: `${menuPosition.y}px` }"
+        data-testid="divide-menu"
+        @keydown="menuKey"
+        @contextmenu.prevent
+      >
+        <div :id="menuLabelId" class="divide-title muted" data-testid="divide-title">{{ menuTitle }}</div>
+        <button
+          v-for="division in DIVISION_CHOICES"
+          :key="division"
+          type="button"
+          class="divide-item"
+          role="menuitemradio"
+          tabindex="-1"
+          :aria-checked="menuCurrent.includes(division)"
+          :class="{ current: menuCurrent.includes(division) }"
+          :data-testid="`divide-${division}`"
+          @click="chooseDivision(division)"
+        >
+          <span class="divide-check" aria-hidden="true">{{ menuCurrent.includes(division) ? '●' : '' }}</span>
+          <span class="divide-number mono">{{ division }}</span>
+          <span class="divide-what muted">{{ division === 1 ? 'one gate' : `${division} gates` }}</span>
+        </button>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -1150,11 +1357,48 @@ function cellClass(
 }
 
 /*
+ * A divided cell fires `--division` gates back to back, so it is drawn as that many short
+ * bars: a repeating gradient along the track cuts a dark line at every gate boundary. The
+ * selection wash below layers on top of it.
+ */
+.cell.on.divided {
+  --gap: 1px;
+  --share: calc(100% / var(--division, 1));
+  background-image: repeating-linear-gradient(
+    var(--split-direction),
+    transparent 0,
+    transparent calc(var(--share) - var(--gap)),
+    var(--cell-line) calc(var(--share) - var(--gap)),
+    var(--cell-line) var(--share)
+  );
+}
+
+.horizontal .cell {
+  --split-direction: to right;
+}
+
+.vertical .cell {
+  --split-direction: to bottom;
+}
+
+/*
  * The selected block: a wash of the accent laid over the cells, lit or not, as a background
  * image so it sits on top of whatever colour the cell has (a gate's track colour included).
  */
 .cell.selected {
   background-image: linear-gradient(var(--selection), var(--selection));
+}
+
+.cell.selected.on.divided {
+  background-image:
+    linear-gradient(var(--selection), var(--selection)),
+    repeating-linear-gradient(
+      var(--split-direction),
+      transparent 0,
+      transparent calc(var(--share) - var(--gap)),
+      var(--cell-line) calc(var(--share) - var(--gap)),
+      var(--cell-line) var(--share)
+    );
 }
 
 /* Step boundaries per orientation: the "start" side faces the start of the song. */
@@ -1212,5 +1456,70 @@ function cellClass(
     inset -1px 0 0 0 var(--cell-on-edge),
     inset 0 calc(-1 * var(--edge-start)) 0 0 var(--cell-on-edge),
     inset 0 var(--edge-end) 0 0 var(--cell-on-edge);
+}
+
+/* The divide menu: a small list pinned to where the pointer was, above everything else. */
+.divide-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 168px;
+  padding: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.45),
+    var(--shadow-glow);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.divide-title {
+  font-size: 11px;
+  padding: 4px 8px 6px;
+  max-width: 240px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.divide-item {
+  display: grid;
+  grid-template-columns: 12px 16px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.divide-item:hover,
+.divide-item:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.divide-item:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.divide-item.current .divide-number {
+  color: var(--accent-bright);
+}
+
+.divide-check {
+  color: var(--accent-bright);
+  font-size: 8px;
+  text-align: center;
+}
+
+.divide-what {
+  font-size: 12px;
 }
 </style>

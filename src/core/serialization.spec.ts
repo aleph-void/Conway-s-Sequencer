@@ -136,6 +136,33 @@ describe('normalizeSong', () => {
   })
 })
 
+describe('divisions', () => {
+  it('round-trips divided steps and defaults to none for older files', () => {
+    const song = createSong()
+    const id = song.channels[0]!.id
+    song.sections[0]!.steps[id] = [0, 4]
+    song.sections[0]!.divisions[id] = { 4: 3 }
+    const back = parseSong(serializeSong(song))
+    expect(back.sections[0]!.divisions).toEqual({ [id]: { 4: 3 } })
+    const legacy = JSON.parse(serializeSong(song)) as { sections: Array<Record<string, unknown>> }
+    delete legacy.sections[0]!.divisions
+    expect(normalizeSong(legacy).sections[0]!.divisions).toEqual({})
+  })
+
+  it('keeps only divisions of steps that are on, for known channels, within 1..8', () => {
+    const raw = {
+      channels: [{ id: 'a', output: 0 }],
+      sections: [
+        {
+          steps: { a: [0, 1, 2, 70] },
+          divisions: { a: { 0: 20, 1: 1, 2: 2.4, 5: 3, 70: 4, x: 2 }, ghost: { 0: 2 }, b: 'no' },
+        },
+      ],
+    }
+    expect(normalizeSong(raw).sections[0]!.divisions).toEqual({ a: { 0: 8, 2: 2 } })
+  })
+})
+
 describe('songFileName', () => {
   it('slugifies the song name', () => {
     expect(songFileName({ name: 'My Great Song!' })).toBe('my-great-song.conway-seq.json')

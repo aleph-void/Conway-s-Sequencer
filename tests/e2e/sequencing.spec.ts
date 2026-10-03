@@ -173,6 +173,74 @@ test.describe('drawing gates', () => {
     expect(await checked(1, 32, 36)).toBe('....')
   })
 
+  test('right-click divides a cell, or every gate of the selected block, and plays the divided gates', async ({
+    midiPage: page,
+  }) => {
+    const cell = (c: number, s: number) => page.getByTestId(`cell-${c}-0-${s}`)
+    const menu = page.getByTestId('divide-menu')
+
+    // Right-click on an empty cell turns it on, divided three ways.
+    await cell(0, 4).click({ button: 'right' })
+    await expect(menu).toBeVisible()
+    await expect(page.getByTestId('divide-title')).toContainText('Out 1, A step 5')
+    await page.getByTestId('divide-3').click()
+    await expect(menu).toBeHidden()
+    await expect(cell(0, 4)).toHaveAttribute('aria-checked', 'true')
+    await expect(cell(0, 4)).toHaveAttribute('data-division', '3')
+    await expect(cell(0, 4)).toHaveClass(/divided/)
+
+    // Two gates on channel 1, a block selected around them, and the menu opened on an empty cell inside it.
+    await cell(1, 0).click()
+    await cell(1, 2).click()
+    const start = (await cell(1, 0).boundingBox())!
+    const end = (await cell(1, 3).boundingBox())!
+    await page.keyboard.down('Shift')
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 4 })
+    await page.mouse.up()
+    await page.keyboard.up('Shift')
+    await expect(page.getByTestId('selection-size')).toHaveText('1 track × 4 steps selected')
+    await cell(1, 1).click({ button: 'right' })
+    await expect(page.getByTestId('divide-title')).toContainText('selected block')
+    await expect(page.getByTestId('divide-1')).toHaveAttribute('aria-checked', 'true')
+    // The keyboard works inside the menu: a digit picks the division outright.
+    await page.keyboard.press('2')
+    await expect(menu).toBeHidden()
+    await expect(cell(1, 0)).toHaveAttribute('data-division', '2')
+    await expect(cell(1, 2)).toHaveAttribute('data-division', '2')
+    await expect(cell(1, 1)).toHaveAttribute('aria-checked', 'false')
+    await expect(cell(1, 3)).toHaveAttribute('aria-checked', 'false')
+    // Escape closes the menu without a choice.
+    await cell(0, 4).click({ button: 'right' })
+    await expect(menu).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(menu).toBeHidden()
+    await expect(cell(0, 4)).toHaveAttribute('data-division', '3')
+
+    // Saved with the song.
+    await expect(page.getByTestId('autosave-status')).toHaveAttribute('data-save-state', 'saved')
+    const stored = await storedSong(page)
+    const ids = stored.channels!.map((c) => c.id)
+    expect(stored.sections?.[0]?.divisions).toEqual({ [ids[0]!]: { 4: 3 }, [ids[1]!]: { 0: 2, 2: 2 } })
+    await page.reload()
+    await expect(cell(0, 4)).toHaveAttribute('data-division', '3')
+    await expect(cell(1, 2)).toHaveAttribute('data-division', '2')
+
+    // Played, step 5 of channel 1 (at 500 ms) is three 41.67 ms gates on note 36 instead of one.
+    await enableMidi(page)
+    await page.getByTestId('play').click()
+    const noteOns = (log: MidiLogEntry[]) => log.filter((e) => e.data[0] === 0x90 && e.data[1] === 36)
+    await expect.poll(async () => noteOns(await midiLog(page)).length, { timeout: 5000 }).toBeGreaterThanOrEqual(3)
+    await page.getByTestId('stop').click()
+    const ons = noteOns(await midiLog(page))
+    const t0 = ons[0]!.timestamp!
+    expect(ons[1]!.timestamp! - t0).toBeCloseTo(41.67, -1)
+    expect(ons[2]!.timestamp! - t0).toBeCloseTo(83.33, -1)
+    const offs = (await midiLog(page)).filter((e) => e.data[0] === 0x80 && e.data[1] === 36)
+    expect(offs[0]!.timestamp! - t0).toBeCloseTo(41.67 - 2, -1)
+  })
+
   test('cuts the bars between the loop points out of the song and inserts them at the cursor', async ({
     midiPage: page,
   }) => {

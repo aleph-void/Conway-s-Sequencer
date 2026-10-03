@@ -20,6 +20,51 @@ function song(overrides: Partial<Song> = {}): Song {
 }
 
 describe('compileSong', () => {
+  it('fires a divided step\'s gates back to back inside the step and breaks the run around it', () => {
+    const s = song()
+    // Steps 0–1 are a run, 2 is divided in four, 3 follows it: the run drops before 2, and
+    // 3 starts afresh after 2's four 31.25 ms gates.
+    s.sections[0]!.steps = { c0: [0, 1, 2, 3] }
+    s.sections[0]!.divisions = { c0: { 2: 4 } }
+    const events = gates(compileSong(s).events)
+    expect(events.map((e) => e.kind)).toEqual(['on', 'off', 'on', 'off', 'on', 'off', 'on', 'off', 'on', 'off', 'on', 'off'])
+    const times = events.map((e) => e.time)
+    expect(times[0]).toBe(0)
+    expect(times[1]).toBeCloseTo(0.25 - MIN_GAP_SECONDS)
+    for (let slot = 0; slot < 4; slot++) {
+      expect(times[2 + slot * 2]).toBeCloseTo(0.25 + slot * 0.03125)
+      expect(times[3 + slot * 2]).toBeCloseTo(0.25 + (slot + 1) * 0.03125 - MIN_GAP_SECONDS)
+    }
+    expect(times[10]).toBeCloseTo(0.375)
+    expect(times[11]).toBeCloseTo(0.5 - MIN_GAP_SECONDS)
+  })
+
+  it('divides a swung step over its real, longer or shorter, length', () => {
+    const s = song()
+    s.sections[0]!.swing = 75
+    // Step 1 swings half a step late (62.5 ms), so it lasts 62.5 ms; halved, its two gates are 31.25 ms.
+    s.sections[0]!.steps = { c0: [1] }
+    s.sections[0]!.divisions = { c0: { 1: 2 } }
+    const events = gates(compileSong(s).events)
+    expect(events.map((e) => e.time)).toEqual([
+      expect.closeTo(0.1875, 6),
+      expect.closeTo(0.1875 + 0.03125 - MIN_GAP_SECONDS, 6),
+      expect.closeTo(0.1875 + 0.03125, 6),
+      expect.closeTo(0.25 - MIN_GAP_SECONDS, 6),
+    ])
+  })
+
+  it('never lets a divided gate drop before it starts, however short the step', () => {
+    const s = song()
+    s.sections[0]!.tempo = 400
+    s.sections[0]!.subdivision = 8
+    s.sections[0]!.steps = { c0: [0] }
+    s.sections[0]!.divisions = { c0: { 0: 8 } }
+    const events = gates(compileSong(s).events)
+    expect(events).toHaveLength(16)
+    for (let i = 0; i < 16; i += 2) expect(events[i + 1]!.time - events[i]!.time).toBeCloseTo(MIN_GAP_SECONDS, 9)
+  })
+
   it('produces only the clock for an empty grid', () => {
     const c = compileSong(song())
     expect(gates(c.events)).toEqual([])

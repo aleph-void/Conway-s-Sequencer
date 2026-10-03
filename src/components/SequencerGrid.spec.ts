@@ -280,7 +280,7 @@ describe('SequencerGrid', () => {
       expect(wrapper.find('[data-testid="paste"]').exists()).toBe(false)
 
       await wrapper.get('[data-testid="copy"]').trigger('click')
-      expect(editor.clipboard).toEqual({ channels: 2, steps: 2, rows: [[1], [0]] })
+      expect(editor.clipboard).toEqual({ channels: 2, steps: 2, rows: [[1], [0]], divisions: [{}, {}] })
       const paste = wrapper.get('[data-testid="paste"]')
       expect(paste.attributes('title')).toContain('(2 × 2) at the cursor: A bar 1 step 1 (Ctrl+V)')
 
@@ -300,7 +300,7 @@ describe('SequencerGrid', () => {
       editor.selectCell({ channel: 1, step: 0 })
       await wrapper.vm.$nextTick()
       await wrapper.get('[data-testid="cut"]').trigger('click')
-      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]] })
+      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]], divisions: [{}] })
       expect(steps(1)).toEqual([])
       wrapper.unmount()
     })
@@ -420,7 +420,7 @@ describe('SequencerGrid', () => {
 
       editor.selectCell({ channel: 2, step: 3 })
       expect(key({ key: 'c', metaKey: true }).defaultPrevented).toBe(true)
-      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]] })
+      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]], divisions: [{}] })
       transport.seekToStep(10)
       expect(key({ key: 'V', ctrlKey: true }).defaultPrevented).toBe(true)
       expect(steps(2)).toEqual([3, 10])
@@ -429,7 +429,7 @@ describe('SequencerGrid', () => {
       editor.selectCell({ channel: 2, step: 3 })
       expect(key({ key: 'x', ctrlKey: true }).defaultPrevented).toBe(true)
       expect(steps(2)).toEqual([])
-      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]] })
+      expect(editor.clipboard).toEqual({ channels: 1, steps: 1, rows: [[0]], divisions: [{}] })
 
       // Other modifier combinations, and keys typed into an input, are not for the grid.
       expect(key({ key: 'v', ctrlKey: true, altKey: true }).defaultPrevented).toBe(false)
@@ -703,6 +703,184 @@ describe('SequencerGrid', () => {
       expect(store.song.settings.loopRange).toEqual({ start: 0, end: 3 })
       await bar(wrapper, 3).trigger('keydown.space')
       expect(store.song.settings.loopRange).toEqual({ start: 3, end: 4 })
+    })
+  })
+
+  describe('dividing cells', () => {
+    const menu = () => document.querySelector<HTMLElement>('[data-testid="divide-menu"]')
+    const item = (n: number) => document.querySelector<HTMLButtonElement>(`[data-testid="divide-${n}"]`)!
+
+    async function rightClick(target: { element: Element }, init: MouseEventInit = { clientX: 40, clientY: 50 }) {
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, ...init })
+      target.element.dispatchEvent(event)
+      await nextTick()
+      await nextTick()
+      return event
+    }
+
+    it('opens a menu on right-click that divides the cell, turning it on first', async () => {
+      const store = useSongStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const section = store.song.sections[0]!
+      const channel = store.song.channels[0]!
+      expect(menu()).toBeNull()
+
+      const cell = wrapper.get('[data-testid="cell-0-0-4"]')
+      const event = await rightClick(cell)
+      expect(event.defaultPrevented).toBe(true)
+      expect(menu()).not.toBeNull()
+      expect(menu()!.style.left).toBe('40px')
+      expect(menu()!.style.top).toBe('50px')
+      expect(document.querySelector('[data-testid="divide-title"]')!.textContent).toContain('Out 1, A step 5')
+      expect(document.querySelectorAll('[role="menuitemradio"]')).toHaveLength(8)
+      // An empty cell has no division to mark; 1 is focused as the default.
+      expect(item(1).getAttribute('aria-checked')).toBe('false')
+      expect(document.activeElement).toBe(item(1))
+
+      item(3).click()
+      await nextTick()
+      expect(menu()).toBeNull()
+      expect(section.steps[channel.id]).toEqual([4])
+      expect(section.divisions[channel.id]).toEqual({ 4: 3 })
+      expect(cell.classes()).toContain('on')
+      expect(cell.classes()).toContain('divided')
+      expect(cell.attributes('data-division')).toBe('3')
+      expect(cell.attributes('aria-label')).toBe('Out 1, A, step 5, divided into 3')
+      expect((cell.element as HTMLElement).style.getPropertyValue('--division')).toBe('3')
+      // Focus goes back to the cell.
+      expect(document.activeElement).toBe(cell.element)
+
+      // Opening it again marks the current division and focuses it; 1 makes the cell plain again.
+      await rightClick(cell)
+      expect(item(3).getAttribute('aria-checked')).toBe('true')
+      expect(document.activeElement).toBe(item(3))
+      item(1).click()
+      await nextTick()
+      expect(section.steps[channel.id]).toEqual([4])
+      expect(section.divisions).toEqual({})
+      expect(cell.classes()).not.toContain('divided')
+      expect(cell.attributes('aria-label')).toBe('Out 1, A, step 5')
+      wrapper.unmount()
+    })
+
+    it('never ties a divided cell to its neighbours', async () => {
+      const store = useSongStore()
+      const wrapper = mount(SequencerGrid)
+      const section = store.song.sections[0]!
+      const channel = store.song.channels[0]!
+      store.setStep(section.id, channel.id, 0, true)
+      store.setStep(section.id, channel.id, 1, true)
+      store.setStep(section.id, channel.id, 2, true)
+      await nextTick()
+      const cell = (s: number) => wrapper.get(`[data-testid="cell-0-0-${s}"]`)
+      expect(cell(0).classes()).toContain('tie-next')
+      expect(cell(1).classes()).toContain('tie-prev')
+      expect(cell(1).classes()).toContain('tie-next')
+
+      store.setDivision(section.id, channel.id, 1, 2)
+      await nextTick()
+      expect(cell(0).classes()).not.toContain('tie-next')
+      expect(cell(1).classes()).not.toContain('tie-prev')
+      expect(cell(1).classes()).not.toContain('tie-next')
+      expect(cell(2).classes()).not.toContain('tie-prev')
+      expect(cell(1).classes()).toContain('divided')
+      wrapper.unmount()
+    })
+
+    it('applies the choice to every gate of the selected block when opened on one of its cells', async () => {
+      const store = useSongStore()
+      const editor = useEditorStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const section = store.song.sections[0]!
+      const [c0, c1] = store.song.channels
+      store.setStep(section.id, c0!.id, 0, true)
+      store.setStep(section.id, c1!.id, 2, true)
+      store.setStep(section.id, c1!.id, 6, true) // outside the block
+      editor.selectCell({ channel: 0, step: 0 })
+      editor.extendTo({ channel: 1, step: 3 })
+      await nextTick()
+
+      // Right-click on an empty cell inside the block: the block's gates are divided, the cell stays off.
+      await rightClick(wrapper.get('[data-testid="cell-0-0-1"]'))
+      expect(document.querySelector('[data-testid="divide-title"]')!.textContent).toContain('selected block (2 tracks × 4 steps)')
+      expect(item(1).getAttribute('aria-checked')).toBe('true')
+      item(4).click()
+      await nextTick()
+      expect(section.steps[c0!.id]).toEqual([0])
+      expect(section.steps[c1!.id]).toEqual([2, 6])
+      expect(section.divisions).toEqual({ [c0!.id]: { 0: 4 }, [c1!.id]: { 2: 4 } })
+      expect(editor.selection).toEqual({ channelStart: 0, channelEnd: 2, stepStart: 0, stepEnd: 4 })
+
+      // A block of mixed divisions marks each of them.
+      store.setDivision(section.id, c0!.id, 0, 2)
+      await rightClick(wrapper.get('[data-testid="cell-1-0-2"]'))
+      expect(item(2).getAttribute('aria-checked')).toBe('true')
+      expect(item(4).getAttribute('aria-checked')).toBe('true')
+      expect(item(1).getAttribute('aria-checked')).toBe('false')
+      expect(document.activeElement).toBe(item(2))
+
+      // Outside the block the menu is for that one cell.
+      await rightClick(wrapper.get('[data-testid="cell-1-0-6"]'))
+      expect(document.querySelector('[data-testid="divide-title"]')!.textContent).toContain('Out 2, A step 7')
+      item(8).click()
+      await nextTick()
+      expect(section.divisions[c1!.id]).toEqual({ 2: 4, 6: 8 })
+      expect(section.divisions[c0!.id]).toEqual({ 0: 2 })
+      wrapper.unmount()
+    })
+
+    it('walks the menu with the keyboard, takes a digit, and closes on Escape or a press outside', async () => {
+      const store = useSongStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const section = store.song.sections[0]!
+      const channel = store.song.channels[0]!
+      const cell = wrapper.get('[data-testid="cell-0-0-0"]')
+      const press = (key: string) => {
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+        document.activeElement!.dispatchEvent(event)
+        return event
+      }
+
+      // The Menu key fires contextmenu with no pointer position: the menu sits on the cell.
+      await rightClick(cell, { clientX: 0, clientY: 0 })
+      expect(menu()).not.toBeNull()
+      expect(document.activeElement).toBe(item(1))
+      press('ArrowDown')
+      expect(document.activeElement).toBe(item(2))
+      press('ArrowUp')
+      press('ArrowUp')
+      expect(document.activeElement).toBe(item(8))
+      press('End')
+      expect(document.activeElement).toBe(item(8))
+      press('Home')
+      expect(document.activeElement).toBe(item(1))
+      expect(press('Escape').defaultPrevented).toBe(true)
+      await nextTick()
+      expect(menu()).toBeNull()
+      expect(document.activeElement).toBe(cell.element)
+      expect(section.steps[channel.id]).toBeUndefined()
+
+      // A digit picks that division outright, and the grid's own shortcuts stay quiet.
+      await rightClick(cell)
+      expect(press('5').defaultPrevented).toBe(true)
+      await nextTick()
+      expect(menu()).toBeNull()
+      expect(section.divisions[channel.id]).toEqual({ 0: 5 })
+
+      // A press anywhere outside closes it without a choice.
+      await rightClick(cell)
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+      await nextTick()
+      expect(menu()).toBeNull()
+      expect(section.divisions[channel.id]).toEqual({ 0: 5 })
+
+      // So does the grid losing the cell.
+      await rightClick(cell)
+      store.updateSection(section.id, { bars: 1 })
+      await nextTick()
+      expect(menu()).toBeNull()
+      wrapper.unmount()
+      expect(menu()).toBeNull()
     })
   })
 })

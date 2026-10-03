@@ -70,7 +70,11 @@ export async function midiLog(page: Page): Promise<MidiLogEntry[]> {
 export interface StoredSong {
   name?: string
   channels?: Array<{ id: string; name: string }>
-  sections?: Array<{ steps: Record<string, number[]>; swing?: number | null }>
+  sections?: Array<{
+    steps: Record<string, number[]>
+    divisions?: Record<string, Record<string, number>>
+    swing?: number | null
+  }>
   settings?: { velocity: number }
 }
 

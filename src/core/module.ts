@@ -10,7 +10,7 @@
  */
 import { CLOCK_NOTE } from './midi'
 import { MIN_GAP_SECONDS, clockPeriod, clockPulseWidth } from './compile'
-import { isChannelSilenced, isStepOn, type Song } from './song'
+import { cellDivision, isChannelSilenced, isStepOn, type Song } from './song'
 import { locate, stepOffsetSeconds, type SectionTiming } from './timing'
 
 /** The module's outputs, laid out MODULE_ROWS by MODULE_COLUMNS, numbered row by row. */
@@ -84,7 +84,7 @@ export function moduleLayout(song: Song): ModuleLayout {
  * gate, the x16 clock during the high half of its pulse, and every unsilenced channel whose
  * step under the cursor is on. Nothing is high while stopped or paused, when every gate has
  * been released. Mirrors what `compileSong` sends, including a gate dropping MIN_GAP_SECONDS
- * before the step after its run.
+ * before the step after its run, and the gates of a divided step taking turns inside it.
  */
 export function highNotes(
   song: Song,
@@ -108,13 +108,28 @@ export function highNotes(
 
   const EPS = 1e-9
   const step = pos.stepInSection
-  // Swing moves step starts, so measure against the next step's real start, not a straight one.
-  const timeToNextStep = timing.startTime + stepOffsetSeconds(timing, step + 1) - positionSeconds
+  // Swing moves step starts, so measure against the step's real edges, not straight ones.
+  const stepStart = timing.startTime + stepOffsetSeconds(timing, step)
+  const stepEnd = timing.startTime + stepOffsetSeconds(timing, step + 1)
   for (const channel of song.channels) {
     if (isChannelSilenced(channel, song.channels)) continue
     if (!isStepOn(section, channel.id, step)) continue
-    const lastOfRun = step === timing.stepCount - 1 || !isStepOn(section, channel.id, step + 1)
-    if (lastOfRun && timeToNextStep <= MIN_GAP_SECONDS + EPS) continue
+    const division = cellDivision(section, channel.id, step)
+    let timeToDrop: number
+    if (division > 1) {
+      // The step's gates take turns: each drops MIN_GAP_SECONDS before the next one starts.
+      const share = (stepEnd - stepStart) / division
+      const slot = Math.min(division - 1, Math.floor((positionSeconds - stepStart) / share))
+      timeToDrop = stepStart + (slot + 1) * share - positionSeconds
+    } else {
+      // A run holds through the next step unless that one is off or divided (it starts afresh).
+      const lastOfRun =
+        step === timing.stepCount - 1 ||
+        !isStepOn(section, channel.id, step + 1) ||
+        cellDivision(section, channel.id, step + 1) > 1
+      timeToDrop = lastOfRun ? stepEnd - positionSeconds : Infinity
+    }
+    if (timeToDrop <= MIN_GAP_SECONDS + EPS) continue
     const note = baseNote + channel.output
     if (note >= 0 && note <= 127) notes.add(note)
   }

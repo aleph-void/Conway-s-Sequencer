@@ -1,5 +1,5 @@
 import { CLOCK_NOTE, CLOCK_PULSES_PER_BEAT, noteOff, noteOn, outputToNote } from './midi'
-import { groupRuns, isChannelSilenced, type Section, type Song } from './song'
+import { cellDivision, gatesOf, isChannelSilenced, type Gate, type Section, type Song } from './song'
 import { buildTimeline, stepOffsetSeconds, totalDuration, type SectionTiming } from './timing'
 
 export interface MidiEvent {
@@ -29,9 +29,12 @@ export const MIN_GAP_SECONDS = 0.002
  *
  * A gate goes high at the start of an on-step and stays high for the whole step. If the
  * following step is also on, the gate is held through it, so a run of consecutive on-steps
- * is one gate that only drops at the next off-step (or the end of the section). Step starts
- * follow the section's swing (see `swingDelay` in core/timing.ts): a swung step starts late and
- * the step before it holds on until it does, so the gates stay back to back.
+ * is one gate that only drops at the next off-step (or the end of the section). A divided
+ * step (see `Section.divisions`) fires its share of gates back to back inside the step
+ * instead, each taking an equal part of it, and never joins a run: the gates around it drop
+ * before it and start fresh after it. Step starts follow the section's swing (see
+ * `swingDelay` in core/timing.ts): a swung step starts late and the step before it holds on
+ * until it does, so the gates stay back to back.
  *
  * On top of the drawn gates, the x16 clock on CLOCK_NOTE pulses CLOCK_PULSES_PER_BEAT times
  * per beat of every section, following each section's tempo and time signature. Mute and
@@ -57,11 +60,8 @@ export function compileSong(song: Song): CompiledSong {
       const on = noteOn(midiChannel, note, velocity)
       const off = noteOff(midiChannel, note)
       const valid = steps.filter((s) => s >= 0 && s < timing.stepCount)
-      for (const [firstStep, lastStep] of groupRuns(valid)) {
-        const start = timing.startTime + stepOffsetSeconds(timing, firstStep)
-        const fullLength = timing.startTime + stepOffsetSeconds(timing, lastStep + 1) - start
-        // Drop just before the next step so a gate starting there is seen as a fresh note-on.
-        const length = Math.max(MIN_GAP_SECONDS, fullLength - MIN_GAP_SECONDS)
+      for (const gate of gatesOf(valid, (step) => cellDivision(section, channel.id, step))) {
+        const { start, length } = gateSeconds(timing, gate)
         events.push({ time: start, kind: 'on', note, channelId: channel.id, data: on })
         events.push({ time: start + length, kind: 'off', note, channelId: channel.id, data: off })
       }
@@ -70,6 +70,20 @@ export function compileSong(song: Song): CompiledSong {
 
   sortEvents(events)
   return { events, duration: totalDuration(timeline), timeline }
+}
+
+/**
+ * When a gate goes high, in seconds from song start, and for how long: from the start of its
+ * first step to the start of the step after its last, swing included, and for a divided step
+ * the slot's equal share of that. It drops MIN_GAP_SECONDS before the next step (or slot) so
+ * a gate starting there is seen as a fresh note-on.
+ */
+export function gateSeconds(timing: SectionTiming, gate: Gate): { start: number; length: number } {
+  const stepStart = timing.startTime + stepOffsetSeconds(timing, gate.start)
+  const stepEnd = timing.startTime + stepOffsetSeconds(timing, gate.end + 1)
+  const share = (stepEnd - stepStart) / gate.division
+  const start = stepStart + gate.slot * share
+  return { start, length: Math.max(MIN_GAP_SECONDS, share - MIN_GAP_SECONDS) }
 }
 
 /** Sort by time; at equal times send note-offs before note-ons so a new gate on the same note works. */

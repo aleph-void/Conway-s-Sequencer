@@ -37,7 +37,7 @@ describe('useSongStore', () => {
       store.setStep(section.id, c1!.id, 0, true)
       const range = { channelStart: 0, channelEnd: 2, stepStart: 0, stepEnd: 2 }
       const block = store.copyBlock(range)
-      expect(block).toEqual({ channels: 2, steps: 2, rows: [[1], [0]] })
+      expect(block).toEqual({ channels: 2, steps: 2, rows: [[1], [0]], divisions: [{}, {}] })
 
       const before = store.revision
       expect(store.pasteBlock(block, 0, 8)).toEqual({ channelStart: 0, channelEnd: 2, stepStart: 8, stepEnd: 10 })
@@ -54,6 +54,90 @@ describe('useSongStore', () => {
       expect(store.pasteBlock(block, 0, 64)).toBeNull()
       expect(store.clearBlock({ channelStart: 9, channelEnd: 10, stepStart: 0, stepEnd: 1 })).toBeNull()
       expect(store.revision).toBe(before + 2)
+    })
+  })
+
+  describe('divided steps', () => {
+    it('divides a step, turning it on first, and drops the division when the step goes off', () => {
+      const store = useSongStore()
+      const section = store.song.sections[0]!
+      const c0 = store.song.channels[0]!.id
+      const before = store.revision
+      store.setDivision(section.id, c0, 4, 3)
+      expect(section.steps[c0]).toEqual([4])
+      expect(section.divisions).toEqual({ [c0]: { 4: 3 } })
+      expect(store.revision).toBe(before + 1)
+
+      store.setDivision(section.id, c0, 4, 1)
+      expect(section.steps[c0]).toEqual([4])
+      expect(section.divisions).toEqual({})
+
+      store.setDivision(section.id, c0, 4, 8)
+      store.toggleStep(section.id, c0, 4)
+      expect(section.steps[c0]).toBeUndefined()
+      expect(section.divisions).toEqual({})
+
+      store.setDivision(section.id, c0, 5, 2)
+      store.setStep(section.id, c0, 5, false)
+      expect(section.divisions).toEqual({})
+
+      // Out of range or unknown: nothing happens.
+      store.setDivision(section.id, c0, 64, 2)
+      store.setDivision(section.id, 'nobody', 0, 2)
+      store.setDivision('nowhere', c0, 0, 2)
+      expect(section.divisions).toEqual({})
+    })
+
+    it('loses divisions with the steps, channels and sections they belong to', () => {
+      const store = useSongStore()
+      const section = store.song.sections[0]!
+      const [c0, c1] = store.song.channels
+      store.setDivision(section.id, c0!.id, 2, 2)
+      store.setDivision(section.id, c0!.id, 40, 3)
+      store.setDivision(section.id, c1!.id, 3, 4)
+
+      store.updateSection(section.id, { bars: 2 })
+      expect(section.divisions).toEqual({ [c0!.id]: { 2: 2 }, [c1!.id]: { 3: 4 } })
+      store.clearChannel(c1!.id)
+      expect(section.divisions).toEqual({ [c0!.id]: { 2: 2 } })
+      store.setDivision(section.id, c1!.id, 3, 4)
+      store.removeChannel(c1!.id)
+      expect(section.divisions).toEqual({ [c0!.id]: { 2: 2 } })
+      store.clearSection(section.id)
+      expect(section.divisions).toEqual({})
+    })
+
+    it('divides the gates of a block, leaves its empty cells alone, and reports what it holds', () => {
+      const store = useSongStore()
+      const section = store.song.sections[0]!
+      const [c0, c1] = store.song.channels
+      store.setStep(section.id, c0!.id, 1, true)
+      store.setStep(section.id, c1!.id, 0, true)
+      store.setStep(section.id, c1!.id, 5, true) // outside the block
+      const range = { channelStart: 0, channelEnd: 2, stepStart: 0, stepEnd: 3 }
+      expect(store.blockDivisions(range)).toEqual([1])
+
+      const before = store.revision
+      expect(store.divideBlock(range, 3)).toEqual(range)
+      expect(store.revision).toBe(before + 1)
+      expect(section.steps[c0!.id]).toEqual([1])
+      expect(section.steps[c1!.id]).toEqual([0, 5])
+      expect(section.divisions).toEqual({ [c0!.id]: { 1: 3 }, [c1!.id]: { 0: 3 } })
+      expect(store.blockDivisions(range)).toEqual([3])
+
+      store.setDivision(section.id, c0!.id, 1, 2)
+      expect(store.blockDivisions(range)).toEqual([2, 3])
+      expect(store.blockDivisions({ channelStart: 0, channelEnd: 2, stepStart: 2, stepEnd: 3 })).toEqual([])
+      expect(store.divideBlock({ channelStart: 9, channelEnd: 10, stepStart: 0, stepEnd: 1 }, 2)).toBeNull()
+
+      // Copying carries the divisions, pasting puts them down, clearing drops them.
+      const block = store.copyBlock(range)
+      expect(block.divisions).toEqual([{ 1: 2 }, { 0: 3 }])
+      store.pasteBlock(block, 0, 8)
+      expect(section.divisions[c0!.id]).toEqual({ 1: 2, 9: 2 })
+      expect(section.divisions[c1!.id]).toEqual({ 0: 3, 8: 3 })
+      store.clearBlock(range)
+      expect(section.divisions).toEqual({ [c0!.id]: { 9: 2 }, [c1!.id]: { 8: 3 } })
     })
   })
 

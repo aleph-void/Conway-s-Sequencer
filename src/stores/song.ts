@@ -12,7 +12,7 @@ import {
   type LibraryIndex,
 } from '../core/library'
 import { deleteBars as takeBars, insertBars as putBars, readBars, type BarClip, type BarRange } from '../core/bars'
-import { clearRange, readBlock, writeBlock, type Block, type CellRange } from '../core/clipboard'
+import { clearRange, divideRange, rangeDivisions, readBlock, writeBlock, type Block, type CellRange } from '../core/clipboard'
 import { normalizeSong, parseSong, serializeSong } from '../core/serialization'
 import {
   MAX_BARS,
@@ -20,6 +20,7 @@ import {
   MAX_SWING,
   MAX_TEMPO,
   MIN_BARS,
+  MIN_DIVISION,
   MIN_SWING,
   MIN_TEMPO,
   clamp,
@@ -30,8 +31,10 @@ import {
   generateId,
   nextFreeOutput,
   normalizeLoopRange,
+  pruneDivisions,
   stepCount,
   totalBars,
+  withDivisionSet,
   withStepSet,
   withStepToggled,
   type Channel,
@@ -109,7 +112,10 @@ export const useSongStore = defineStore('song', () => {
     const index = song.value.channels.findIndex((c) => c.id === id)
     if (index < 0) return
     song.value.channels.splice(index, 1)
-    for (const section of song.value.sections) delete section.steps[id]
+    for (const section of song.value.sections) {
+      delete section.steps[id]
+      delete section.divisions[id]
+    }
     touch()
   }
 
@@ -203,6 +209,7 @@ export const useSongStore = defineStore('song', () => {
     }
     Object.assign(section, patch)
     section.steps = clampStepsToLength(section.steps, stepCount(section))
+    section.divisions = pruneDivisions(section.divisions, section.steps)
     clampLoopRange()
     touch()
   }
@@ -221,6 +228,7 @@ export const useSongStore = defineStore('song', () => {
     const next = withStepToggled(section.steps[channelId], step)
     if (next.length) section.steps[channelId] = next
     else delete section.steps[channelId]
+    if (!next.includes(step)) section.divisions = withDivisionSet(section.divisions, channelId, step, MIN_DIVISION)
     touch()
   }
 
@@ -231,6 +239,21 @@ export const useSongStore = defineStore('song', () => {
     const next = withStepSet(section.steps[channelId], step, on)
     if (next.length) section.steps[channelId] = next
     else delete section.steps[channelId]
+    if (!on) section.divisions = withDivisionSet(section.divisions, channelId, step, MIN_DIVISION)
+    touch()
+  }
+
+  /**
+   * Divide one step `division` ways (1 makes it a plain gate again; see `Section.divisions`),
+   * turning it on first when it is off.
+   */
+  function setDivision(sectionId: string, channelId: string, step: number, division: number) {
+    const section = sectionById(sectionId)
+    if (!section || !channelById(channelId)) return
+    if (step < 0 || step >= stepCount(section)) return
+    const next = withStepSet(section.steps[channelId], step, true)
+    section.steps[channelId] = next
+    section.divisions = withDivisionSet(section.divisions, channelId, step, division)
     touch()
   }
 
@@ -238,11 +261,15 @@ export const useSongStore = defineStore('song', () => {
     const section = sectionById(sectionId)
     if (!section) return
     section.steps = {}
+    section.divisions = {}
     touch()
   }
 
   function clearChannel(channelId: string) {
-    for (const section of song.value.sections) delete section.steps[channelId]
+    for (const section of song.value.sections) {
+      delete section.steps[channelId]
+      delete section.divisions[channelId]
+    }
     touch()
   }
 
@@ -267,6 +294,21 @@ export const useSongStore = defineStore('song', () => {
     const cleared = clearRange(song.value, timeline.value, range)
     if (cleared) touch()
     return cleared
+  }
+
+  /**
+   * Divide every gate inside a rectangle of cells `division` ways (cells that are off stay
+   * off). Returns the range covered, null for none.
+   */
+  function divideBlock(range: CellRange, division: number): CellRange | null {
+    const divided = divideRange(song.value, timeline.value, range, division)
+    if (divided) touch()
+    return divided
+  }
+
+  /** The distinct divisions of the gates inside a rectangle of cells, smallest first. */
+  function blockDivisions(range: CellRange): number[] {
+    return rangeDivisions(song.value, timeline.value, range)
   }
 
   // ---- bars (loop points, clipboard) -------------------------------------
@@ -572,11 +614,14 @@ export const useSongStore = defineStore('song', () => {
     updateSection,
     toggleStep,
     setStep,
+    setDivision,
     clearSection,
     clearChannel,
     copyBlock,
     pasteBlock,
     clearBlock,
+    divideBlock,
+    blockDivisions,
     copyBars,
     deleteBars,
     insertBars,

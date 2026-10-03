@@ -132,6 +132,25 @@ describe('highNotes', () => {
     expect(gate(0.5 - MIN_GAP_SECONDS)).toBe(false)
   })
 
+  it('lights the gates of a divided step in turn, each dropping before the next', () => {
+    const song = songWithGate([3, 4, 5])
+    song.sections[0]!.divisions[song.channels[0]!.id] = { 4: 4 }
+    const tl = buildTimeline(song)
+    const high = (t: number) => highNotes(song, tl, t, true).has(36)
+    // Step 3 (0.375–0.5 s) is a plain gate, but it drops before step 4, which is divided.
+    expect(high(0.4)).toBe(true)
+    expect(high(0.5 - MIN_GAP_SECONDS / 2)).toBe(false)
+    // Step 4's four gates are 31.25 ms each, each off for the last 2 ms.
+    expect(high(0.5)).toBe(true)
+    expect(high(0.5 + 0.03125 - MIN_GAP_SECONDS / 2)).toBe(false)
+    expect(high(0.5 + 0.03125)).toBe(true)
+    expect(high(0.5 + 3 * 0.03125 + 0.01)).toBe(true)
+    expect(high(0.625 - MIN_GAP_SECONDS / 2)).toBe(false)
+    // Step 5 starts afresh and holds to the end of the run.
+    expect(high(0.625)).toBe(true)
+    expect(high(0.7)).toBe(true)
+  })
+
   it('respects mute and solo', () => {
     const s = songWithGate([0])
     const t = buildTimeline(s)
