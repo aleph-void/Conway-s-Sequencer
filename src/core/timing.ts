@@ -130,11 +130,6 @@ export function totalDuration(timeline: readonly SectionTiming[]): number {
   return last ? last.startTime + last.duration : 0
 }
 
-export function totalBars(timeline: readonly SectionTiming[]): number {
-  const last = timeline[timeline.length - 1]
-  return last ? last.startBar + last.stepCount / last.stepsPerBar : 0
-}
-
 /**
  * Seconds from song start to the start of a bar on the whole-song bar axis. The bar after
  * the last one maps to the end of the song, so a loop range's `end` can be converted too.

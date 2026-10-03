@@ -186,4 +186,14 @@ describe('divisions in blocks', () => {
     })
     expect(s.sections[0]!.divisions).toEqual({ c0: { 7: 4 } })
   })
+
+  it('reports no divisions for a range outside the song, and treats a block without division rows as plain', () => {
+    const s = song()
+    const tl = buildTimeline(s)
+    expect(rangeDivisions(s, tl, { channelStart: 0, channelEnd: 1, stepStart: 50, stepEnd: 60 })).toEqual([])
+    const block: Block = { channels: 1, steps: 2, rows: [[0, 1]], divisions: [] }
+    expect(writeBlock(s, tl, block, 0, 0)).toEqual({ channelStart: 0, channelEnd: 1, stepStart: 0, stepEnd: 2 })
+    expect(s.sections[0]!.steps.c0).toEqual([0, 1])
+    expect(s.sections[0]!.divisions).toEqual({})
+  })
 })

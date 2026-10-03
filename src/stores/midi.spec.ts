@@ -152,4 +152,16 @@ describe('useMidiStore', () => {
       delete (navigator as unknown as Record<string, unknown>).requestMIDIAccess
     }
   })
+
+  it('clears the outputs when refreshed before access is granted, and survives a storage that throws', () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    const store = useMidiStore()
+    getItem.mockRestore()
+    expect(store.selectedOutputId).toBeNull()
+    store.outputs = [{ id: 'x', name: 'x', manufacturer: '', state: 'connected' }]
+    store.refreshOutputs()
+    expect(store.outputs).toEqual([])
+  })
 })

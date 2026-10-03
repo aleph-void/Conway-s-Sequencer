@@ -2,16 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { rangeContains } from '../core/clipboard'
 import { trackHue } from '../core/colors'
-import {
-  MAX_CHANNELS,
-  MAX_DIVISION,
-  MIN_DIVISION,
-  cellDivision,
-  clamp,
-  isChannelSilenced,
-  isStepOn,
-  type Section,
-} from '../core/song'
+import { MAX_CHANNELS, MAX_DIVISION, MIN_DIVISION, clamp, isChannelSilenced, type Section } from '../core/song'
+import { isTextField } from '../dom'
 import { useEditorStore } from '../stores/editor'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
@@ -57,6 +49,46 @@ const sections = computed(() =>
 )
 
 const currentStep = computed(() => transport.currentStep)
+
+// ---- cell lookup ----------------------------------------------------------------
+/**
+ * An O(1) view of every cell: which steps of a channel are on in a section and how they are
+ * divided. The render looks at every cell several times over, so it must never scan a
+ * section's step list; this is rebuilt on an edit in one pass over the on-steps instead.
+ */
+interface RowLookup {
+  on: ReadonlySet<number>
+  divisions: Readonly<Record<number, number>>
+}
+
+const EMPTY_ROW: RowLookup = { on: new Set(), divisions: {} }
+
+const lookup = computed(() => {
+  const bySection = new Map<string, Map<string, RowLookup>>()
+  for (const section of store.song.sections) {
+    const rows = new Map<string, RowLookup>()
+    for (const channel of store.song.channels) {
+      const steps = section.steps[channel.id]
+      if (steps) rows.set(channel.id, { on: new Set(steps), divisions: section.divisions[channel.id] ?? {} })
+    }
+    bySection.set(section.id, rows)
+  }
+  return bySection
+})
+
+function row(sectionId: string, channelId: string): RowLookup {
+  return lookup.value.get(sectionId)?.get(channelId) ?? EMPTY_ROW
+}
+
+function stepOn(sectionId: string, channelId: string, step: number): boolean {
+  return row(sectionId, channelId).on.has(step)
+}
+
+/** How many gates a cell fires: its division while on, one otherwise (as `cellDivision` in core/song.ts). */
+function cellGates(sectionId: string, channelId: string, step: number): number {
+  const cells = row(sectionId, channelId)
+  return cells.on.has(step) ? (cells.divisions[step] ?? MIN_DIVISION) : MIN_DIVISION
+}
 
 // ---- scrolling ------------------------------------------------------------
 const scroller = ref<HTMLElement | null>(null)
@@ -162,8 +194,8 @@ function seekFromHeader(startStep: number, span: number, event: MouseEvent) {
 /** What a cell is called to a screen reader; a divided one says how many gates it fires. */
 function cellLabel(channelName: string, section: Section, channelId: string, step: number): string {
   const base = `${channelName}, ${section.name}, step ${step + 1}`
-  const division = cellDivision(section, channelId, step)
-  return division > MIN_DIVISION ? `${base}, divided into ${division}` : base
+  const gates = cellGates(section.id, channelId, step)
+  return gates > MIN_DIVISION ? `${base}, divided into ${gates}` : base
 }
 
 /** Enter or Space on a header puts the cursor at its start. */
@@ -171,15 +203,22 @@ function seekToHeader(startStep: number) {
   transport.seekToStep(startStep)
 }
 
-const cursorLabel = computed(() => {
+/** Where the cursor is, as the user would say it: the section's name and 1-based bar and step in it. */
+const cursorPlace = computed(() => {
   const at = transport.position
-  if (!at) return 'the start'
-  const section = store.song.sections[at.sectionIndex]
-  const timing = store.timeline[at.sectionIndex]
-  if (!section || !timing) return 'the start'
-  const bar = Math.floor(at.stepInSection / timing.stepsPerBar) + 1
-  const step = (at.stepInSection % timing.stepsPerBar) + 1
-  return `${section.name} bar ${bar} step ${step}`
+  const section = at ? store.song.sections[at.sectionIndex] : undefined
+  const timing = at ? store.timeline[at.sectionIndex] : undefined
+  if (!at || !section || !timing) return null
+  return {
+    name: section.name,
+    bar: Math.floor(at.stepInSection / timing.stepsPerBar) + 1,
+    step: (at.stepInSection % timing.stepsPerBar) + 1,
+  }
+})
+
+const cursorLabel = computed(() => {
+  const place = cursorPlace.value
+  return place ? `${place.name} bar ${place.bar} step ${place.step}` : 'the start'
 })
 
 // ---- selection, copy and paste --------------------------------------------------
@@ -223,12 +262,8 @@ const barsLabel = computed(() => {
 })
 
 const cursorBarLabel = computed(() => {
-  const at = transport.position
-  if (!at) return 'the start'
-  const section = store.song.sections[at.sectionIndex]
-  const timing = store.timeline[at.sectionIndex]
-  if (!section || !timing) return 'the start'
-  return `${section.name} bar ${Math.floor(at.stepInSection / timing.stepsPerBar) + 1}`
+  const place = cursorPlace.value
+  return place ? `${place.name} bar ${place.bar}` : 'the start'
 })
 
 const pasteBarsTitle = computed(() => {
@@ -243,10 +278,7 @@ const pasteBarsTitle = computed(() => {
  * block; the same with Shift for the selected bars.
  */
 function onKey(event: KeyboardEvent) {
-  if (event.defaultPrevented) return
-  const target = event.target as HTMLElement | null
-  const tag = target?.tagName
-  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+  if (event.defaultPrevented || isTextField(event.target)) return
   const modifier = (event.ctrlKey || event.metaKey) && !event.altKey
   const key = event.key.toLowerCase()
   const erase = !modifier && !event.altKey && (event.key === 'Delete' || event.key === 'Backspace')
@@ -283,9 +315,7 @@ function begin(
     editor.selectCell({ channel: channelIndex, step: globalStep })
     return
   }
-  const section = store.sectionById(sectionId)
-  if (!section) return
-  paintValue.value = !isStepOn(section, channelId, step)
+  paintValue.value = !stepOn(sectionId, channelId, step)
   painting.value = true
   store.setStep(sectionId, channelId, step, paintValue.value)
 }
@@ -374,9 +404,8 @@ const menuCurrent = computed<number[]>(() => {
   const target = menuTarget.value
   if (!target) return []
   if (menuOnSelection.value) return editor.selectionDivisions
-  const section = store.sectionById(target.sectionId)
-  if (!section || !isStepOn(section, target.channelId, target.step)) return []
-  return [cellDivision(section, target.channelId, target.step)]
+  if (!stepOn(target.sectionId, target.channelId, target.step)) return []
+  return [cellGates(target.sectionId, target.channelId, target.step)]
 })
 
 function openMenu(
@@ -503,11 +532,11 @@ function cellClass(
   subdivision: number,
   stepCount: number,
 ) {
-  const section = store.sectionById(sectionId)
-  const on = section ? isStepOn(section, channelId, step) : false
+  const cells = row(sectionId, channelId)
+  const on = cells.on.has(step)
   const range = selection.value
-  const plain = (at: number) => isStepOn(section!, channelId, at) && cellDivision(section!, channelId, at) === MIN_DIVISION
-  const divided = on && cellDivision(section!, channelId, step) > MIN_DIVISION
+  const plain = (at: number) => cells.on.has(at) && (cells.divisions[at] ?? MIN_DIVISION) === MIN_DIVISION
+  const divided = on && (cells.divisions[step] ?? MIN_DIVISION) > MIN_DIVISION
   return {
     on,
     divided,
@@ -731,12 +760,12 @@ function cellClass(
                   timing.stepCount,
                 )
               "
-              :style="{ '--division': cellDivision(section, channel.id, step - 1) }"
+              :style="{ '--division': cellGates(section.id, channel.id, step - 1) }"
               role="checkbox"
               tabindex="0"
-              :aria-checked="isStepOn(section, channel.id, step - 1)"
+              :aria-checked="stepOn(section.id, channel.id, step - 1)"
               :aria-label="cellLabel(channel.name, section, channel.id, step - 1)"
-              :data-division="cellDivision(section, channel.id, step - 1)"
+              :data-division="cellGates(section.id, channel.id, step - 1)"
               :data-testid="`cell-${channelIndex}-${timing.index}-${step - 1}`"
               @pointerdown="begin(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)"
               @pointerenter="enter(section.id, channel.id, step - 1, channelIndex, timing.startStep + step - 1, $event)"

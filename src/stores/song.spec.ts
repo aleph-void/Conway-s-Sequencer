@@ -675,6 +675,30 @@ describe('useSongStore', () => {
       expect(store.song.name).toBe('Untitled')
       vi.unstubAllGlobals()
     })
+
+    it('skips an unreadable remaining song when the open one is deleted, and reports a failed removal', async () => {
+      vi.useFakeTimers()
+      const store = useSongStore()
+      store.rename('A')
+      const a = store.currentId
+      await vi.advanceTimersByTimeAsync(300)
+      store.newSong()
+      const b = store.currentId
+      localStorage.setItem(songKey(a), '{broken')
+      store.deleteSong(b)
+      expect(store.currentId).not.toBe(a)
+      expect(store.currentId).not.toBe(b)
+      expect(store.song.name).toBe('Untitled')
+      expect(store.library[0]!.name).toBe('Untitled')
+      expect(storedSong(store)).toContain('"Untitled"')
+
+      const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+        throw new Error('nope')
+      })
+      store.deleteSong(a)
+      expect(store.saveState).toBe('error')
+      removeItem.mockRestore()
+    })
   })
 
   describe('persistence', () => {

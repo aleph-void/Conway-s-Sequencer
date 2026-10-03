@@ -13,6 +13,7 @@
  */
 import { createSong, generateId, type Song } from './song'
 import { parseSong, serializeSong } from './serialization'
+import { isObject } from './json'
 
 export const LIBRARY_KEY = 'conways-sequencer:library'
 export const SONG_KEY_PREFIX = 'conways-sequencer:song:'
@@ -59,10 +60,6 @@ export function songKey(id: string): string {
 
 export function emptyIndex(): LibraryIndex {
   return { version: LIBRARY_VERSION, currentId: null, entries: [] }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function asCount(value: unknown): number {

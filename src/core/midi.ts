@@ -4,7 +4,6 @@ export const NOTE_OFF = 0x80
 export const NOTE_ON = 0x90
 export const CONTROL_CHANGE = 0xb0
 export const CC_ALL_NOTES_OFF = 123
-export const CC_ALL_SOUND_OFF = 120
 /**
  * The play gate is a note held high (note-on) for as long as the song is playing and released
  * (note-off) the moment it stops or pauses. Which note is a song setting (`playGateNote`); this is
@@ -33,6 +32,11 @@ export function noteOn(channel: number, note: number, velocity: number): number[
 
 export function noteOff(channel: number, note: number): number[] {
   return [statusByte(NOTE_OFF, channel), clamp(Math.round(note), 0, 127), 0]
+}
+
+/** The note-off that releases the note a note-on message raised, on the same channel. */
+export function noteOffFor(noteOnData: readonly number[]): number[] {
+  return [NOTE_OFF | ((noteOnData[0] ?? NOTE_ON) & 0x0f), noteOnData[1] ?? 0, 0]
 }
 
 export function allNotesOff(channel: number): number[] {

@@ -329,4 +329,18 @@ describe('useEditorStore', () => {
     expect(editor.paste()).toEqual({ channelStart: 0, channelEnd: 1, stepStart: 0, stepEnd: 1 })
     expect(steps(0)).toEqual([0])
   })
+
+  it('falls back to the start when the song has no step to place the cursor on', () => {
+    const song = useSongStore()
+    const editor = useEditorStore()
+    draw(0, 3)
+    editor.selectCell({ channel: 0, step: 3 })
+    expect(editor.copy()).toBe(true)
+    song.removeSection(song.song.sections[0]!.id)
+    expect(editor.cursorBar).toBe(0)
+    expect(editor.paste()).toBeNull()
+    song.addSection({ bars: 1 })
+    expect(editor.paste()).toEqual({ channelStart: 0, channelEnd: 1, stepStart: 0, stepEnd: 1 })
+    expect(steps(0)).toEqual([0])
+  })
 })

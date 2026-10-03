@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { CLOCK_CHANNEL_ID, MIN_GAP_SECONDS, compileSong, windowEvents, type MidiEvent } from './compile'
+import { MIN_GAP_SECONDS, compileSong, windowEvents, type MidiEvent } from './compile'
 import { CLOCK_NOTE } from './midi'
 import { createChannel, createSection, createSong, type Song } from './song'
 
 /** The drawn gates only: the clock is checked by its own tests below. */
 function gates(events: readonly MidiEvent[]): MidiEvent[] {
-  return events.filter((e) => e.channelId !== CLOCK_CHANNEL_ID)
+  return events.filter((e) => e.note !== CLOCK_NOTE)
 }
 
 function clock(events: readonly MidiEvent[]): MidiEvent[] {
-  return events.filter((e) => e.channelId === CLOCK_CHANNEL_ID)
+  return events.filter((e) => e.note === CLOCK_NOTE)
 }
 
 function song(overrides: Partial<Song> = {}): Song {
@@ -227,7 +227,7 @@ describe('compileSong', () => {
       // The 17th pulse starts exactly one beat in.
       expect(pulses[32]!.time).toBeCloseTo(0.5)
       expect(pulses.at(-2)!.time).toBeCloseTo(2 - 0.5 / 16)
-      expect(pulses.every((p) => p.channelId === CLOCK_CHANNEL_ID)).toBe(true)
+      expect(pulses.every((p) => p.note === CLOCK_NOTE)).toBe(true)
     })
 
     it('follows each section\'s tempo and time signature', () => {
@@ -267,8 +267,8 @@ describe('compileSong', () => {
 })
 
 describe('windowEvents', () => {
-  function ev(time: number, kind: 'on' | 'off', note = 36, channelId = 'c0'): MidiEvent {
-    return { time, kind, note, channelId, data: kind === 'on' ? [0x90, note, 100] : [0x80, note, 0] }
+  function ev(time: number, kind: 'on' | 'off', note = 36): MidiEvent {
+    return { time, kind, note, data: kind === 'on' ? [0x90, note, 100] : [0x80, note, 0] }
   }
 
   it('keeps only the events inside the window, re-based to start at 0', () => {
@@ -298,12 +298,12 @@ describe('windowEvents', () => {
     const out = windowEvents(events, 1, 2)
     expect(out).toHaveLength(2)
     expect(out[0]).toEqual(ev(0.5, 'on'))
-    expect(out[1]).toMatchObject({ kind: 'off', note: 36, channelId: 'c0', data: [0x80, 36, 0] })
+    expect(out[1]).toMatchObject({ kind: 'off', note: 36, data: [0x80, 36, 0] })
     expect(out[1]!.time).toBeCloseTo(1 - MIN_GAP_SECONDS)
   })
 
   it('releases on the channel the gate was raised on', () => {
-    const on: MidiEvent = { time: 1.5, kind: 'on', note: 36, channelId: 'c0', data: [0x95, 36, 100] }
+    const on: MidiEvent = { time: 1.5, kind: 'on', note: 36, data: [0x95, 36, 100] }
     const out = windowEvents([on, ev(3, 'off')], 1, 2)
     expect(out[1]!.data).toEqual([0x85, 36, 0])
   })

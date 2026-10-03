@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
 
 describe('App', () => {
@@ -85,5 +85,16 @@ describe('App', () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } })
     await wrapper.get('[data-testid="song-name"]').setValue('My Patch')
     expect((wrapper.get('[data-testid="song-name"]').element as HTMLInputElement).value).toBe('My Patch')
+  })
+
+  it('toggles full screen from the toolbar when the browser supports it', async () => {
+    localStorage.clear()
+    const request = vi.fn(async () => {})
+    document.documentElement.requestFullscreen = request
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.get('[data-testid="toggle-fullscreen"]').trigger('click')
+    expect(request).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+    delete (document.documentElement as Partial<HTMLElement>).requestFullscreen
   })
 })

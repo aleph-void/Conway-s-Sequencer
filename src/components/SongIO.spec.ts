@@ -115,4 +115,22 @@ describe('SongIO', () => {
     await vi.waitFor(() => expect(store.song.name).toBe('Imported'))
     expect(store.library.map((e) => e.name)).toEqual(['Imported', 'Keep me'])
   })
+
+  it('opens the file picker from the Import button and reads a file without Blob.text()', async () => {
+    const store = useSongStore()
+    const wrapper = mount(SongIO)
+    const input = wrapper.get('[data-testid="import-file"]')
+    const click = vi.spyOn(input.element as HTMLInputElement, 'click').mockImplementation(() => {})
+    await wrapper.get('[data-testid="import-song"]').trigger('click')
+    expect(click).toHaveBeenCalledTimes(1)
+
+    const json = JSON.stringify({ name: 'Old engine', channels: [], sections: [] })
+    const file = new File([json], 'song.json', { type: 'application/json' })
+    Object.defineProperty(file, 'text', { value: undefined })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+    await vi.waitFor(() => expect(store.song.name).toBe('Old engine'))
+    await nextTick()
+    expect(wrapper.get('[data-testid="io-message"]').text()).toContain('Old engine')
+  })
 })

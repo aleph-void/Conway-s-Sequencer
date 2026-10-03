@@ -7,10 +7,10 @@ function setFullscreenElement(el: Element | null) {
   Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: el })
 }
 
-function Host() {
+function Host(target?: () => Element | null) {
   return defineComponent({
     setup() {
-      const fs = useFullscreen()
+      const fs = useFullscreen(target)
       return { fs }
     },
     render() {
@@ -71,5 +71,13 @@ describe('useFullscreen', () => {
     await wrapper.vm.fs.exit()
     expect(exit).not.toHaveBeenCalled()
     expect(wrapper.vm.fs.active.value).toBe(false)
+  })
+
+  it('does nothing when the target element is missing', async () => {
+    const request = vi.fn(async () => {})
+    document.documentElement.requestFullscreen = request
+    const wrapper = mount(Host(() => null))
+    await wrapper.vm.fs.enter()
+    expect(request).not.toHaveBeenCalled()
   })
 })

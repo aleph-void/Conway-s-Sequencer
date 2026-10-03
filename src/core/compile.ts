@@ -1,4 +1,4 @@
-import { CLOCK_NOTE, CLOCK_PULSES_PER_BEAT, noteOff, noteOn, outputToNote } from './midi'
+import { CLOCK_NOTE, CLOCK_PULSES_PER_BEAT, noteOff, noteOffFor, noteOn, outputToNote } from './midi'
 import { cellDivision, gatesOf, isChannelSilenced, type Gate, type Section, type Song } from './song'
 import { buildTimeline, stepOffsetSeconds, totalDuration, type SectionTiming } from './timing'
 
@@ -7,13 +7,8 @@ export interface MidiEvent {
   time: number
   kind: 'on' | 'off'
   note: number
-  /** The sequenced channel the event belongs to, or CLOCK_CHANNEL_ID for the x16 clock. */
-  channelId: string
   data: number[]
 }
-
-/** Pseudo channel id carried by the clock's events; no real channel ever has this id. */
-export const CLOCK_CHANNEL_ID = 'clock'
 
 export interface CompiledSong {
   events: MidiEvent[]
@@ -62,8 +57,8 @@ export function compileSong(song: Song): CompiledSong {
       const valid = steps.filter((s) => s >= 0 && s < timing.stepCount)
       for (const gate of gatesOf(valid, (step) => cellDivision(section, channel.id, step))) {
         const { start, length } = gateSeconds(timing, gate)
-        events.push({ time: start, kind: 'on', note, channelId: channel.id, data: on })
-        events.push({ time: start + length, kind: 'off', note, channelId: channel.id, data: off })
+        events.push({ time: start, kind: 'on', note, data: on })
+        events.push({ time: start + length, kind: 'off', note, data: off })
       }
     }
   }
@@ -78,7 +73,7 @@ export function compileSong(song: Song): CompiledSong {
  * the slot's equal share of that. It drops MIN_GAP_SECONDS before the next step (or slot) so
  * a gate starting there is seen as a fresh note-on.
  */
-export function gateSeconds(timing: SectionTiming, gate: Gate): { start: number; length: number } {
+function gateSeconds(timing: SectionTiming, gate: Gate): { start: number; length: number } {
   const stepStart = timing.startTime + stepOffsetSeconds(timing, gate.start)
   const stepEnd = timing.startTime + stepOffsetSeconds(timing, gate.end + 1)
   const share = (stepEnd - stepStart) / gate.division
@@ -87,7 +82,7 @@ export function gateSeconds(timing: SectionTiming, gate: Gate): { start: number;
 }
 
 /** Sort by time; at equal times send note-offs before note-ons so a new gate on the same note works. */
-export function sortEvents(events: MidiEvent[]): MidiEvent[] {
+function sortEvents(events: MidiEvent[]): MidiEvent[] {
   return events.sort((a, b) => a.time - b.time || rank(a) - rank(b) || a.note - b.note)
 }
 
@@ -125,13 +120,9 @@ export function windowEvents(events: readonly MidiEvent[], start: number, end: n
   const release = Math.max(MIN_GAP_SECONDS, duration - MIN_GAP_SECONDS)
   for (const on of high.values()) {
     const at = Math.max(release, Math.max(0, on.time - start))
-    out.push({ time: at, kind: 'off', note: on.note, channelId: on.channelId, data: offFor(on) })
+    out.push({ time: at, kind: 'off', note: on.note, data: noteOffFor(on.data) })
   }
   return sortEvents(out)
-}
-
-function offFor(on: MidiEvent): number[] {
-  return noteOff(((on.data[0] ?? 0x90) & 0x0f) + 1, on.note)
 }
 
 /**
@@ -147,8 +138,8 @@ function pushClock(events: MidiEvent[], timing: SectionTiming, section: Section,
   const off = noteOff(midiChannel, CLOCK_NOTE)
   for (let pulse = 0; pulse < beats * CLOCK_PULSES_PER_BEAT; pulse++) {
     const start = timing.startTime + pulse * period
-    events.push({ time: start, kind: 'on', note: CLOCK_NOTE, channelId: CLOCK_CHANNEL_ID, data: on })
-    events.push({ time: start + width, kind: 'off', note: CLOCK_NOTE, channelId: CLOCK_CHANNEL_ID, data: off })
+    events.push({ time: start, kind: 'on', note: CLOCK_NOTE, data: on })
+    events.push({ time: start + width, kind: 'off', note: CLOCK_NOTE, data: off })
   }
 }
 
