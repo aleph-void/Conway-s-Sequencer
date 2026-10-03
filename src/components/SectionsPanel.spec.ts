@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { useSongStore } from '../stores/song'
 import SectionsPanel from './SectionsPanel.vue'
 
@@ -198,6 +199,19 @@ describe('SectionsPanel', () => {
       await handle().trigger('keydown', { key: 'ArrowUp' })
       await handle().trigger('keydown', { key: 'Enter' })
       expect(names()).toEqual(['A', 'B', 'C'])
+    })
+
+    it('hands the browser the section id and shows the whole row as the drag image', async () => {
+      const { row, store } = setup()
+      const dt = { effectAllowed: 'none', setData: vi.fn(), setDragImage: vi.fn() }
+      const event = new Event('dragstart', { bubbles: true })
+      Object.defineProperty(event, 'dataTransfer', { value: dt })
+      row(1).get('[data-testid="section-handle"]').element.dispatchEvent(event)
+      await nextTick()
+      expect(dt.effectAllowed).toBe('move')
+      expect(dt.setData).toHaveBeenCalledWith('text/plain', store.song.sections[1]!.id)
+      expect(dt.setDragImage).toHaveBeenCalledWith(row(1).element, 12, expect.any(Number))
+      expect(row(1).classes()).toContain('dragging')
     })
   })
 

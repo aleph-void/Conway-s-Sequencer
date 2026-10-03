@@ -3,7 +3,7 @@ import type { MidiEvent } from './compile'
 import { Scheduler } from './scheduler'
 
 function ev(time: number, kind: 'on' | 'off', note = 36): MidiEvent {
-  return { time, kind, note, channelId: 'c', data: kind === 'on' ? [0x90, note, 100] : [0x80, note, 0] }
+  return { time, kind, note, data: kind === 'on' ? [0x90, note, 100] : [0x80, note, 0] }
 }
 
 describe('Scheduler', () => {
@@ -210,5 +210,19 @@ describe('Scheduler', () => {
     scheduler.setLoop(true)
     vi.advanceTimersByTime(600)
     expect(scheduler.position()).toBeCloseTo(0.2)
+  })
+
+  it('starts past the last event, sends nothing and still stops at the end', () => {
+    scheduler.load([ev(0, 'on'), ev(0.1, 'off')], 1, false)
+    scheduler.start(0.5)
+    expect(scheduler.isRunning).toBe(true)
+    expect(sent).toEqual([])
+    vi.advanceTimersByTime(600)
+    expect(scheduler.isRunning).toBe(false)
+    expect(onStop).toHaveBeenCalledTimes(1)
+    expect(sent).toEqual([])
+    // Stopping again is a no-op.
+    scheduler.stop()
+    expect(onStop).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMidiStore, type MidiAccessLike } from '../stores/midi'
 import MidiPanel from './MidiPanel.vue'
 
@@ -53,5 +53,22 @@ describe('MidiPanel', () => {
     await useMidiStore().requestAccess(async () => access([]))
     await wrapper.vm.$nextTick()
     expect(wrapper.get('[data-testid="midi-status"]').text()).toMatch(/No MIDI outputs/)
+  })
+
+  it('asks for access from the button and rescans the outputs', async () => {
+    const wrapper = mount(MidiPanel)
+    const midi = useMidiStore()
+    midi.status = 'idle'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="midi-status"]').text()).toMatch(/Enable MIDI/)
+    const request = vi.spyOn(midi, 'requestAccess')
+    await wrapper.get('[data-testid="enable-midi"]').trigger('click')
+    expect(request).toHaveBeenCalledTimes(1)
+
+    await midi.requestAccess(async () => access(['a']))
+    await wrapper.vm.$nextTick()
+    const refresh = vi.spyOn(midi, 'refreshOutputs')
+    await wrapper.get('button[title="Rescan outputs"]').trigger('click')
+    expect(refresh).toHaveBeenCalledTimes(1)
   })
 })

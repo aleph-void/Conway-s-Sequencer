@@ -7,6 +7,7 @@ import {
   isWebMidiSupported,
   noteName,
   noteOff,
+  noteOffFor,
   noteOn,
   outputToNote,
   statusByte,
@@ -27,6 +28,11 @@ describe('MIDI message builders', () => {
     expect(noteOn(0, -5, 300)).toEqual([0x90, 0, 127])
     expect(noteOn(99, 200, 0)).toEqual([0x9f, 127, 1])
     expect(statusByte(0x90, 1.4)).toBe(0x90)
+  })
+
+  it('builds the note-off that releases a note-on, on the same channel', () => {
+    expect(noteOffFor([0x95, 36, 100])).toEqual([0x85, 36, 0])
+    expect(noteOffFor(noteOn(1, 60, 100))).toEqual(noteOff(1, 60))
   })
 
   it('builds all-notes-off CC', () => {

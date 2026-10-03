@@ -12,6 +12,7 @@ import {
   type Section,
 } from '../core/song'
 import { formatDuration } from '../core/timing'
+import { numberFrom as num } from '../dom'
 import { useSongStore } from '../stores/song'
 
 const store = useSongStore()
@@ -98,10 +99,6 @@ function onHandleKey(section: Section, event: KeyboardEvent) {
   if (!delta) return
   event.preventDefault()
   store.moveSection(section.id, delta)
-}
-
-function num(event: Event): number {
-  return Number((event.target as HTMLInputElement).value)
 }
 
 function onTempo(section: Section, event: Event) {

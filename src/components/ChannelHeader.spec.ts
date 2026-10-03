@@ -107,4 +107,10 @@ describe('ChannelHeader', () => {
     await wrapper.get('[data-testid="channel-remove"]').trigger('click')
     expect(store.channelById(channel.id)).toBeUndefined()
   })
+
+  it('moves a channel up', async () => {
+    const { store, channel, wrapper } = mountAt(1)
+    await wrapper.get('[data-testid="channel-up"]').trigger('click')
+    expect(store.song.channels[0]!.id).toBe(channel.id)
+  })
 })

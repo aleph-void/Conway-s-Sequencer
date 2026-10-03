@@ -97,6 +97,33 @@ export const useSongStore = defineStore('song', () => {
     return song.value.channels.find((c) => c.id === id)
   }
 
+  /** The section a cell edit targets, or undefined when the section, channel or step does not exist. */
+  function cellTarget(sectionId: string, channelId: string, step: number): Section | undefined {
+    const section = sectionById(sectionId)
+    if (!section || !channelById(channelId)) return undefined
+    if (step < 0 || step >= stepCount(section)) return undefined
+    return section
+  }
+
+  /** Move the item with `id` to index `to` (clamped). Returns whether anything moved; does not touch. */
+  function moveItem<T extends { id: string }>(list: T[], id: string, to: number): boolean {
+    const from = list.findIndex((item) => item.id === id)
+    if (from < 0 || !Number.isFinite(to)) return false
+    const target = clamp(Math.round(to), 0, list.length - 1)
+    if (target === from) return false
+    const [item] = list.splice(from, 1)
+    list.splice(target, 0, item!)
+    return true
+  }
+
+  /** Forget everything every section knows about a channel: its steps and their divisions. */
+  function dropChannelData(channelId: string) {
+    for (const section of song.value.sections) {
+      delete section.steps[channelId]
+      delete section.divisions[channelId]
+    }
+  }
+
   // ---- channels -------------------------------------------------------
   function addChannel(overrides: Partial<Omit<Channel, 'id'>> = {}): Channel | null {
     if (!canAddChannel.value) return null
@@ -112,10 +139,7 @@ export const useSongStore = defineStore('song', () => {
     const index = song.value.channels.findIndex((c) => c.id === id)
     if (index < 0) return
     song.value.channels.splice(index, 1)
-    for (const section of song.value.sections) {
-      delete section.steps[id]
-      delete section.divisions[id]
-    }
+    dropChannelData(id)
     touch()
   }
 
@@ -128,13 +152,15 @@ export const useSongStore = defineStore('song', () => {
   }
 
   function moveChannel(id: string, delta: number) {
-    const list = song.value.channels
-    const from = list.findIndex((c) => c.id === id)
+    if (moveBy(song.value.channels, id, delta)) touch()
+  }
+
+  /** Move an item by `delta` places, staying put when that would leave the list. */
+  function moveBy<T extends { id: string }>(list: T[], id: string, delta: number): boolean {
+    const from = list.findIndex((item) => item.id === id)
     const to = from + delta
-    if (from < 0 || to < 0 || to >= list.length) return
-    const [item] = list.splice(from, 1)
-    list.splice(to, 0, item!)
-    touch()
+    if (from < 0 || to < 0 || to >= list.length) return false
+    return moveItem(list, id, to)
   }
 
   // ---- sections -------------------------------------------------------
@@ -173,25 +199,12 @@ export const useSongStore = defineStore('song', () => {
   }
 
   function moveSection(id: string, delta: number) {
-    const list = song.value.sections
-    const from = list.findIndex((s) => s.id === id)
-    const to = from + delta
-    if (from < 0 || to < 0 || to >= list.length) return
-    const [item] = list.splice(from, 1)
-    list.splice(to, 0, item!)
-    touch()
+    if (moveBy(song.value.sections, id, delta)) touch()
   }
 
   /** Move a section so that it ends up at `to` (clamped to the list); used by drag-and-drop reordering. */
   function moveSectionTo(id: string, to: number) {
-    const list = song.value.sections
-    const from = list.findIndex((s) => s.id === id)
-    if (from < 0 || !Number.isFinite(to)) return
-    const target = clamp(Math.round(to), 0, list.length - 1)
-    if (target === from) return
-    const [item] = list.splice(from, 1)
-    list.splice(target, 0, item!)
-    touch()
+    if (moveItem(song.value.sections, id, to)) touch()
   }
 
   function updateSection(id: string, patch: Partial<Omit<Section, 'id' | 'steps'>>) {
@@ -222,9 +235,8 @@ export const useSongStore = defineStore('song', () => {
 
   // ---- steps ----------------------------------------------------------
   function toggleStep(sectionId: string, channelId: string, step: number) {
-    const section = sectionById(sectionId)
-    if (!section || !channelById(channelId)) return
-    if (step < 0 || step >= stepCount(section)) return
+    const section = cellTarget(sectionId, channelId, step)
+    if (!section) return
     const next = withStepToggled(section.steps[channelId], step)
     if (next.length) section.steps[channelId] = next
     else delete section.steps[channelId]
@@ -233,9 +245,8 @@ export const useSongStore = defineStore('song', () => {
   }
 
   function setStep(sectionId: string, channelId: string, step: number, on: boolean) {
-    const section = sectionById(sectionId)
-    if (!section || !channelById(channelId)) return
-    if (step < 0 || step >= stepCount(section)) return
+    const section = cellTarget(sectionId, channelId, step)
+    if (!section) return
     const next = withStepSet(section.steps[channelId], step, on)
     if (next.length) section.steps[channelId] = next
     else delete section.steps[channelId]
@@ -248,9 +259,8 @@ export const useSongStore = defineStore('song', () => {
    * turning it on first when it is off.
    */
   function setDivision(sectionId: string, channelId: string, step: number, division: number) {
-    const section = sectionById(sectionId)
-    if (!section || !channelById(channelId)) return
-    if (step < 0 || step >= stepCount(section)) return
+    const section = cellTarget(sectionId, channelId, step)
+    if (!section) return
     const next = withStepSet(section.steps[channelId], step, true)
     section.steps[channelId] = next
     section.divisions = withDivisionSet(section.divisions, channelId, step, division)
@@ -266,10 +276,7 @@ export const useSongStore = defineStore('song', () => {
   }
 
   function clearChannel(channelId: string) {
-    for (const section of song.value.sections) {
-      delete section.steps[channelId]
-      delete section.divisions[channelId]
-    }
+    dropChannelData(channelId)
     touch()
   }
 
@@ -565,18 +572,14 @@ export const useSongStore = defineStore('song', () => {
     } else if (loaded.indexChanged) {
       writeIndexSafely()
     }
-    // Every GUI edit goes through an action that mutates `song`, so a deep
-    // watch is enough to pick all of them up; debounce so a paint-drag across
-    // many cells results in one write.
-    watch(
-      song,
-      () => {
-        saveState.value = 'pending'
-        if (handle) clearTimeout(handle)
-        handle = setTimeout(save, AUTOSAVE_DEBOUNCE_MS)
-      },
-      { deep: true },
-    )
+    // Every edit goes through an action that bumps `revision` (`touch`), so watching that
+    // one number picks all of them up without walking the whole song on each change;
+    // debounce so a paint-drag across many cells results in one write.
+    watch(revision, () => {
+      saveState.value = 'pending'
+      if (handle) clearTimeout(handle)
+      handle = setTimeout(save, AUTOSAVE_DEBOUNCE_MS)
+    })
     if (typeof window !== 'undefined') {
       // Flush a pending autosave when the tab is closed, reloaded or backgrounded.
       window.addEventListener('pagehide', () => {

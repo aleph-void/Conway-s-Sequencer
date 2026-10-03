@@ -6,7 +6,6 @@
  */
 
 /**
-/**
  * The Conway's Game module exposes 64 trigger/gate outputs. The last two are reserved for
  * the x16 clock (CLOCK_NOTE in core/midi.ts) and the play gate (DEFAULT_PLAY_GATE_NOTE
  * below), so songs get 62 sequenced channels.

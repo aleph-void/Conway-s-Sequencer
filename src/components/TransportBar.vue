@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { formatDuration } from '../core/timing'
+import { isTextField } from '../dom'
 import { useMidiStore } from '../stores/midi'
 import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
@@ -51,9 +52,7 @@ const sectionLabel = computed(() => {
 })
 
 function onKey(event: KeyboardEvent) {
-  const target = event.target as HTMLElement | null
-  const tag = target?.tagName
-  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+  if (isTextField(event.target)) return
   if (event.code === 'Space') {
     event.preventDefault()
     transport.toggle()

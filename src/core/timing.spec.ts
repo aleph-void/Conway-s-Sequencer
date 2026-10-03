@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSection } from './song'
+import { createSection, totalBars } from './song'
 import {
   barStartTime,
   buildTimeline,
@@ -13,7 +13,6 @@ import {
   stepOffsetSeconds,
   stepStartTime,
   swingDelay,
-  totalBars,
   totalDuration,
   totalSteps,
 } from './timing'
@@ -110,7 +109,7 @@ describe('buildTimeline', () => {
     expect(tl.map((t) => t.tempo)).toEqual([120, 120, 60])
     expect(tl.map((t) => t.startStep)).toEqual([0, 16, 40])
     expect(tl.map((t) => t.startBar)).toEqual([0, 1, 3])
-    expect(totalBars(tl)).toBe(4)
+    expect(totalBars(sections)).toBe(4)
     expect(tl.map((t) => t.stepCount)).toEqual([16, 24, 4])
     expect(tl.map((t) => t.startTime)).toEqual([0, 2, 5])
     expect(tl.map((t) => t.duration)).toEqual([2, 3, 4])
@@ -141,7 +140,6 @@ describe('buildTimeline', () => {
   it('is empty for an empty song', () => {
     expect(buildTimeline({ sections: [] })).toEqual([])
     expect(totalSteps([])).toBe(0)
-    expect(totalBars([])).toBe(0)
     expect(totalDuration([])).toBe(0)
   })
 

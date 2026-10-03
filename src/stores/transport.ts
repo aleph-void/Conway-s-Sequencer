@@ -8,12 +8,6 @@ import { locate, stepStartTime, type Position } from '../core/timing'
 import { useMidiStore } from './midi'
 import { useSongStore } from './song'
 
-export interface TransportDeps {
-  now?: () => number
-  requestFrame?: (cb: () => void) => unknown
-  cancelFrame?: (handle: unknown) => void
-}
-
 function sameRange(a: LoopRange | null, b: LoopRange | null): boolean {
   return a === b || (a !== null && b !== null && a.start === b.start && a.end === b.end)
 }

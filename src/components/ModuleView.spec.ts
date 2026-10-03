@@ -103,4 +103,14 @@ describe('ModuleView', () => {
     expect(shared.attributes('title')).toContain('Snare + Play gate')
     expect(wrapper.get('[data-testid="module-output-64"]').classes()).not.toContain('assigned')
   })
+
+  it('marks outputs whose note leaves MIDI as invalid', () => {
+    const song = useSongStore()
+    song.updateSettings({ baseNote: 66 })
+    const wrapper = mount(ModuleView)
+    const last = wrapper.get('[data-testid="module-output-64"]')
+    expect(last.classes()).toContain('invalid')
+    expect(last.attributes('title')).toContain('outside MIDI')
+    expect(wrapper.get('[data-testid="module-output-62"]').attributes('title')).toContain('note 127')
+  })
 })

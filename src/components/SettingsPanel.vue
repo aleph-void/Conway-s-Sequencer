@@ -1,16 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { noteName } from '../core/midi'
+import { CLOCK_NOTE, CLOCK_PULSES_PER_BEAT, noteName } from '../core/midi'
 import { MAX_CHANNELS } from '../core/song'
-import { CLOCK_NOTE, CLOCK_PULSES_PER_BEAT } from '../core/midi'
+import { numberFrom as num } from '../dom'
 import { useSongStore } from '../stores/song'
 
 const store = useSongStore()
 const settings = computed(() => store.song.settings)
-
-function num(event: Event): number {
-  return Number((event.target as HTMLInputElement).value)
-}
 </script>
 
 <template>

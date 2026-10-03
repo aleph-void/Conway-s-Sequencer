@@ -191,4 +191,12 @@ describe('highNotes', () => {
     expect(highNotes(s, t, 8.3, true).has(CLOCK_NOTE)).toBe(false)
     expect(highNotes(s, t, 8.26, true).has(CLOCK_NOTE)).toBe(true)
   })
+
+  it('skips a channel whose note lies beyond MIDI under an extreme base note', () => {
+    const extreme = songWithGate([0], 7) // output 7
+    extreme.settings.baseNote = 121 // note 128
+    const notes = highNotes(extreme, buildTimeline(extreme), 0, true)
+    expect(notes.has(128)).toBe(false)
+    expect(notes.has(99)).toBe(true)
+  })
 })

@@ -516,6 +516,17 @@ describe('SequencerGrid', () => {
       expect(transport.currentStep).toBe(1)
       wrapper.unmount()
     })
+
+    it('puts the cursor at the start of a header with Space', async () => {
+      const store = useSongStore()
+      const transport = useTransportStore()
+      store.addSection({ bars: 2 })
+      const wrapper = mount(SequencerGrid)
+      await wrapper.get('[data-testid="grid-section-1"]').trigger('keydown', { key: ' ' })
+      expect(transport.currentStep).toBe(64)
+      await wrapper.get('[data-testid="bar-label-5"]').trigger('keydown', { key: ' ' })
+      expect(transport.currentStep).toBe(80)
+    })
   })
 
   describe('track orientation', () => {
@@ -881,6 +892,33 @@ describe('SequencerGrid', () => {
       expect(menu()).toBeNull()
       wrapper.unmount()
       expect(menu()).toBeNull()
+    })
+
+    it('closes the menu when the window scrolls or resizes, or the song changes', async () => {
+      const store = useSongStore()
+      const wrapper = mount(SequencerGrid, { attachTo: document.body })
+      const cell = wrapper.get('[data-testid="cell-0-0-0"]')
+      await rightClick(cell)
+      expect(menu()).not.toBeNull()
+      window.dispatchEvent(new Event('scroll'))
+      await nextTick()
+      expect(menu()).toBeNull()
+
+      await rightClick(cell)
+      window.dispatchEvent(new Event('resize'))
+      await nextTick()
+      expect(menu()).toBeNull()
+
+      await rightClick(cell)
+      store.removeChannel(store.song.channels[7]!.id)
+      await nextTick()
+      expect(menu()).toBeNull()
+
+      await rightClick(wrapper.get('[data-testid="cell-0-0-0"]'))
+      store.newSong()
+      await nextTick()
+      expect(menu()).toBeNull()
+      wrapper.unmount()
     })
   })
 })

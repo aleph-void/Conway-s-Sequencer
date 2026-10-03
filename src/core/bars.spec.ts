@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { clampBarRange, deleteBars, insertBars, readBars, type BarClip } from './bars'
-import { createChannel, createSection, createSong, type Song } from './song'
+import { MAX_BARS, createChannel, createSection, createSong, type Song } from './song'
 import { resolveTempos } from './timing'
 
 /** A song of two channels and the given sections (4/4, 4 steps per beat unless overridden). */
@@ -190,6 +190,32 @@ describe('insertBars', () => {
     expect(insertBars(s, { channels: 2, bars: [slice([[0], [1]])] }, 0)).toEqual({ start: 0, end: 1 })
     expect(s.sections.map((x) => [x.name, x.bars, x.tempo])).toEqual([['X', 1, 90]])
     expect(s.sections[0]!.steps).toEqual({ a: [0], b: [1] })
+  })
+
+  it('starts a new section rather than growing one past MAX_BARS, and chunks a very long run', () => {
+    const s = song({ id: 'h', name: 'H', tempo: 100, bars: MAX_BARS - 1, steps: { a: [0] } })
+    // Two same-meter bars no longer fit the host: they become a section of their own after it.
+    const run = { channels: 2, bars: [slice([[0], []]), slice([[], [1]])] }
+    expect(insertBars(s, run, MAX_BARS - 1)).toEqual({ start: MAX_BARS - 1, end: MAX_BARS + 1 })
+    expect(bars(s)).toEqual([MAX_BARS - 1, 2])
+    expect(s.sections[1]!.name).toBe('X')
+    expect(s.sections[1]!.tempo).toBe(90)
+
+    // A run longer than MAX_BARS is cut into sections of at most MAX_BARS bars.
+    const empty = song()
+    const long = Array.from({ length: MAX_BARS + 10 }, (_, i) => slice([[i % 16], []]))
+    expect(insertBars(empty, { channels: 2, bars: long }, 0)).toEqual({ start: 0, end: MAX_BARS + 10 })
+    expect(bars(empty)).toEqual([MAX_BARS, 10])
+    expect(empty.sections[1]!.steps.a).toEqual(Array.from({ length: 10 }, (_, i) => i * 16 + ((MAX_BARS + i) % 16)))
+  })
+
+  it('drops a channel from the host when every gate of it moves to the tail of a split', () => {
+    const s = song({ id: 'h', name: 'H', tempo: 100, bars: 2, steps: { a: [20], b: [0, 20] } })
+    const other = slice([[0], []], { timeSignature: { beats: 3, unit: 4 } })
+    expect(insertBars(s, { channels: 2, bars: [other] }, 1)).toEqual({ start: 1, end: 2 })
+    expect(bars(s)).toEqual([1, 1, 1])
+    expect(s.sections[0]!.steps).toEqual({ b: [0] })
+    expect(s.sections[2]!.steps).toEqual({ a: [4], b: [4] })
   })
 })
 

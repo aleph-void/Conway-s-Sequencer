@@ -134,6 +134,11 @@ describe('normalizeSong', () => {
     })
     expect(song.channels.map((c) => c.solo)).toEqual([true, false, false])
   })
+
+  it('rejects a channel or section that is not an object', () => {
+    expect(() => normalizeSong({ channels: [null], sections: [] })).toThrow(/channel 0 is not an object/)
+    expect(() => normalizeSong({ channels: [], sections: ['x'] })).toThrow(/section 0 is not an object/)
+  })
 })
 
 describe('divisions', () => {

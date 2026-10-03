@@ -1,4 +1,5 @@
 import type { MidiEvent } from './compile'
+import { noteOffFor } from './midi'
 
 export interface SchedulerDeps {
   /** Send a MIDI message at an absolute timestamp (ms, same clock as `now`). */
@@ -77,19 +78,25 @@ export class Scheduler {
       target -= duration
       this.loopCount += 1
     }
-    this.index = this.events.findIndex((e) => e.time > target)
-    if (this.index < 0) this.index = this.events.length
+    this.index = firstEventAfter(this.events, target)
 
     // A note that is sounding keeps ringing only if the new material still ends it.
     for (const [note, off] of [...this.sounding]) {
-      const next =
-        this.events.find((e) => e.note === note && e.time > target) ??
-        (this.loop ? this.events.find((e) => e.note === note) : undefined)
+      const next = this.nextEventForNote(note, this.index) ?? (this.loop ? this.nextEventForNote(note, 0) : undefined)
       if (!next || next.kind !== 'off') {
         this.deps.send(off, Math.max(now, this.lastSentAt))
         this.sounding.delete(note)
       }
     }
+  }
+
+  /** The first event for `note` at or after index `from`, in play order. */
+  private nextEventForNote(note: number, from: number): MidiEvent | undefined {
+    for (let i = from; i < this.events.length; i++) {
+      const event = this.events[i]!
+      if (event.note === note) return event
+    }
+    return undefined
   }
 
   setLoop(loop: boolean): void {
@@ -121,8 +128,7 @@ export class Scheduler {
     this.loopCount = 0
     this.startMs = anchor - from * 1000
     this.lastSentAt = Number.NEGATIVE_INFINITY
-    this.index = this.events.findIndex((e) => e.time >= from)
-    if (this.index < 0) this.index = this.events.length
+    this.index = firstEventFrom(this.events, from)
     this.raiseSpanningGates(from)
     this.tick()
   }
@@ -144,7 +150,7 @@ export class Scheduler {
     for (const event of open.values()) {
       this.deps.send(event.data, at)
       this.lastSentAt = at
-      this.sounding.set(event.note, offFor(event))
+      this.sounding.set(event.note, noteOffFor(event.data))
     }
   }
 
@@ -182,7 +188,7 @@ export class Scheduler {
       if (at > horizon) break
       this.deps.send(event.data, at)
       this.lastSentAt = at
-      if (event.kind === 'on') this.sounding.set(event.note, offFor(event))
+      if (event.kind === 'on') this.sounding.set(event.note, noteOffFor(event.data))
       else this.sounding.delete(event.note)
       this.index += 1
     }
@@ -198,7 +204,24 @@ export class Scheduler {
   }
 }
 
-function offFor(event: MidiEvent): number[] {
-  const status = (event.data[0] ?? 0x90) & 0x0f
-  return [0x80 | status, event.note, 0]
+/** Index of the first event at or after `time` in a time-sorted list (its length when there is none). */
+function firstEventFrom(events: readonly MidiEvent[], time: number): number {
+  return lowerBound(events, (e) => e.time >= time)
+}
+
+/** Index of the first event strictly after `time` in a time-sorted list (its length when there is none). */
+function firstEventAfter(events: readonly MidiEvent[], time: number): number {
+  return lowerBound(events, (e) => e.time > time)
+}
+
+/** Binary search: the first index whose event satisfies `test`, which must be false then true along the list. */
+function lowerBound(events: readonly MidiEvent[], test: (e: MidiEvent) => boolean): number {
+  let lo = 0
+  let hi = events.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (test(events[mid]!)) hi = mid
+    else lo = mid + 1
+  }
+  return lo
 }

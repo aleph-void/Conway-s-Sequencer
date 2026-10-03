@@ -14,6 +14,7 @@ import {
   mapDivisionSteps,
   pruneDivisions,
   stepsPerBar,
+  totalBars,
   type LoopRange,
   type Section,
   type Song,
@@ -99,8 +100,7 @@ function pinTempos(sections: readonly Section[], before: Map<string, number>) {
 
 /** Lift the bars inside `range` out of the song. Null when the range covers none of it. */
 export function readBars(song: Song, range: BarRange): BarClip | null {
-  const total = song.sections.reduce((sum, s) => sum + s.bars, 0)
-  const clamped = clampBarRange(range, total)
+  const clamped = clampBarRange(range, totalBars(song.sections))
   if (!clamped) return null
   const tempos = resolveTempos(song.sections)
   const bars: BarSlice[] = []
@@ -139,8 +139,7 @@ export function readBars(song: Song, range: BarRange): BarClip | null {
  * the range taken out, or null when the range covered none of it.
  */
 export function deleteBars(song: Song, range: BarRange): BarRange | null {
-  const total = song.sections.reduce((sum, s) => sum + s.bars, 0)
-  const clamped = clampBarRange(range, total)
+  const clamped = clampBarRange(range, totalBars(song.sections))
   if (!clamped) return null
   const before = tempoMap(song.sections)
   // From the end, so taking a section out does not move the ones still to be looked at.
@@ -223,8 +222,7 @@ function sectionFrom(song: Song, slices: readonly BarSlice[]): Section {
  */
 export function insertBars(song: Song, clip: BarClip, atBar: number): BarRange | null {
   if (!clip.bars.length) return null
-  const total = song.sections.reduce((sum, s) => sum + s.bars, 0)
-  const start = Math.min(Math.max(0, Math.floor(atBar)), total)
+  const start = Math.min(Math.max(0, Math.floor(atBar)), totalBars(song.sections))
   const before = tempoMap(song.sections)
 
   // Where the next run goes: the section it lands in and the bar in it. The bar after the

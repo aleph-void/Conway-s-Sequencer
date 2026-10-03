@@ -25,26 +25,13 @@ import {
   type Subdivision,
   type TimeSignatureUnit,
 } from './song'
+import { asNumber, asString, isObject, type JsonObject } from './json'
 
 export class SongValidationError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'SongValidationError'
   }
-}
-
-type Json = Record<string, unknown>
-
-function isObject(value: unknown): value is Json {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function asNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
-}
-
-function asString(value: unknown, fallback: string): string {
-  return typeof value === 'string' ? value : fallback
 }
 
 function normalizeSettings(raw: unknown, bars: number): SongSettings {
@@ -91,7 +78,7 @@ function normalizeSection(raw: unknown, index: number, seenIds: Set<string>, cha
     tempo = clamp(t, MIN_TEMPO, MAX_TEMPO)
   }
 
-  const tsRaw = isObject(raw.timeSignature) ? raw.timeSignature : {}
+  const tsRaw: JsonObject = isObject(raw.timeSignature) ? raw.timeSignature : {}
   const beats = clamp(Math.round(asNumber(tsRaw.beats, 4)), 1, 32)
   const unitNum = Math.round(asNumber(tsRaw.unit, 4))
   const unit: TimeSignatureUnit = (TIME_SIGNATURE_UNITS as readonly number[]).includes(unitNum)
