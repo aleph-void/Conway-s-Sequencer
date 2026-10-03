@@ -86,7 +86,7 @@ describe('useEditorStore', () => {
     editor.selectCell({ channel: 1, step: 0 })
     editor.extendTo({ channel: 2, step: 3 })
     expect(editor.copy()).toBe(true)
-    expect(editor.clipboard).toEqual({ channels: 2, steps: 4, rows: [[0, 2], [1]] })
+    expect(editor.clipboard).toEqual({ channels: 2, steps: 4, rows: [[0, 2], [1]], divisions: [{}, {}] })
 
     // The cursor sits at the start when stopped: pasting there writes the same cells back.
     const before = song.revision
@@ -113,7 +113,7 @@ describe('useEditorStore', () => {
     editor.selectCell({ channel: 0, step: 0 })
     editor.extendTo({ channel: 1, step: 1 })
     editor.copy()
-    expect(editor.clipboard).toEqual({ channels: 2, steps: 2, rows: [[0], []] })
+    expect(editor.clipboard).toEqual({ channels: 2, steps: 2, rows: [[0], []], divisions: [{}, {}] })
 
     // A selection elsewhere picks the channels; the cursor picks the step. The block's off
     // cells clear what was there, and its second row falls past the last channel.
@@ -158,9 +158,37 @@ describe('useEditorStore', () => {
 
     draw(1, 4)
     expect(editor.cut()).toBe(true)
-    expect(editor.clipboard).toEqual({ channels: 2, steps: 1, rows: [[], [0]] })
+    expect(editor.clipboard).toEqual({ channels: 2, steps: 1, rows: [[], [0]], divisions: [{}, {}] })
     expect(steps(1)).toEqual([])
     expect(editor.hasSelection).toBe(true)
+  })
+
+  it('divides the gates in the selection and says which divisions it holds', () => {
+    const song = useSongStore()
+    const editor = useEditorStore()
+    expect(editor.divideSelection(3)).toBe(false)
+    expect(editor.selectionDivisions).toEqual([])
+    draw(1, 0)
+    draw(1, 2)
+    draw(2, 1)
+    draw(2, 8) // outside the block
+    editor.selectCell({ channel: 1, step: 0 })
+    editor.extendTo({ channel: 2, step: 3 })
+    expect(editor.selectionDivisions).toEqual([1])
+    const before = song.revision
+    expect(editor.divideSelection(3)).toBe(true)
+    expect(song.revision).toBe(before + 1)
+    const section = song.song.sections[0]!
+    expect(section.divisions).toEqual({ [song.song.channels[1]!.id]: { 0: 3, 2: 3 }, [song.song.channels[2]!.id]: { 1: 3 } })
+    expect(steps(1)).toEqual([0, 2])
+    expect(steps(2)).toEqual([1, 8])
+    expect(editor.selectionDivisions).toEqual([3])
+    // The selection stays, so another choice applies to the same block.
+    expect(editor.hasSelection).toBe(true)
+    song.setDivision(section.id, song.song.channels[1]!.id, 0, 2)
+    expect(editor.selectionDivisions).toEqual([2, 3])
+    expect(editor.divideSelection(1)).toBe(true)
+    expect(section.divisions).toEqual({})
   })
 
   describe('bars', () => {
@@ -197,8 +225,22 @@ describe('useEditorStore', () => {
       expect(editor.barClipboard).toEqual({
         channels: 8,
         bars: [
-          { name: 'A', tempo: 120, timeSignature: { beats: 4, unit: 4 }, subdivision: 4, rows: [[0, 15], [], [], [], [], [], [], []] },
-          { name: 'A', tempo: 120, timeSignature: { beats: 4, unit: 4 }, subdivision: 4, rows: [[], [8], [], [], [], [], [], []] },
+          {
+            name: 'A',
+            tempo: 120,
+            timeSignature: { beats: 4, unit: 4 },
+            subdivision: 4,
+            rows: [[0, 15], [], [], [], [], [], [], []],
+            divisions: [{}, {}, {}, {}, {}, {}, {}, {}],
+          },
+          {
+            name: 'A',
+            tempo: 120,
+            timeSignature: { beats: 4, unit: 4 },
+            subdivision: 4,
+            rows: [[], [8], [], [], [], [], [], []],
+            divisions: [{}, {}, {}, {}, {}, {}, {}, {}],
+          },
         ],
       })
 

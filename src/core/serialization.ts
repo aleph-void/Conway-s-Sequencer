@@ -10,10 +10,12 @@ import {
   SUBDIVISIONS,
   TIME_SIGNATURE_UNITS,
   clamp,
+  clampDivision,
   clampStepsToLength,
   defaultSettings,
   generateId,
   normalizeLoopRange,
+  pruneDivisions,
   stepCount,
   totalBars,
   type Channel,
@@ -117,6 +119,7 @@ function normalizeSection(raw: unknown, index: number, seenIds: Set<string>, cha
     subdivision,
     swing,
     steps: {},
+    divisions: {},
   }
 
   const stepsRaw = isObject(raw.steps) ? raw.steps : {}
@@ -127,6 +130,21 @@ function normalizeSection(raw: unknown, index: number, seenIds: Set<string>, cha
     if (cleaned.length) steps[channelId] = cleaned
   }
   section.steps = clampStepsToLength(steps, stepCount(section))
+
+  // Divided steps: only ones that are on count, and a bad count is pulled into range.
+  const divisionsRaw = isObject(raw.divisions) ? raw.divisions : {}
+  const divisions: Record<string, Record<number, number>> = {}
+  for (const [channelId, row] of Object.entries(divisionsRaw)) {
+    if (!channelIds.has(channelId) || !isObject(row)) continue
+    const cleaned: Record<number, number> = {}
+    for (const [key, value] of Object.entries(row)) {
+      const step = Number(key)
+      if (!Number.isInteger(step) || typeof value !== 'number') continue
+      cleaned[step] = clampDivision(value)
+    }
+    divisions[channelId] = cleaned
+  }
+  section.divisions = pruneDivisions(divisions, section.steps)
   return section
 }
 

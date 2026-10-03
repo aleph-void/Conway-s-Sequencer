@@ -8,7 +8,11 @@
  */
 import {
   MAX_BARS,
+  MIN_DIVISION,
+  cellDivision,
   createSection,
+  mapDivisionSteps,
+  pruneDivisions,
   stepsPerBar,
   type LoopRange,
   type Section,
@@ -24,7 +28,8 @@ export type BarRange = LoopRange
 /**
  * One bar lifted out of the song: its gates, and the name, tempo and meter of the section
  * it came from, which is how it plays when it cannot join the section it lands in.
- * `rows[r]` holds the on-steps of the r-th channel, counted from the bar's first step.
+ * `rows[r]` holds the on-steps of the r-th channel, counted from the bar's first step, and
+ * `divisions[r]` how many ways each divided one of them is split (see `Section.divisions`).
  */
 export interface BarSlice {
   name: string
@@ -32,6 +37,7 @@ export interface BarSlice {
   timeSignature: TimeSignature
   subdivision: Subdivision
   rows: number[][]
+  divisions: Array<Record<number, number>>
 }
 
 /** A run of bars lifted out of the grid, across every channel of the song (by position). */
@@ -104,14 +110,23 @@ export function readBars(song: Song, range: BarRange): BarClip | null {
     const perBar = stepsPerBar(section)
     for (let bar = lo; bar < hi; bar++) {
       const first = bar * perBar
+      const rows = song.channels.map((channel) =>
+        (section.steps[channel.id] ?? []).filter((s) => s >= first && s < first + perBar).map((s) => s - first),
+      )
       bars.push({
         name: section.name,
         tempo: tempos[index]!,
         timeSignature: { ...section.timeSignature },
         subdivision: section.subdivision,
-        rows: song.channels.map((channel) =>
-          (section.steps[channel.id] ?? []).filter((s) => s >= first && s < first + perBar).map((s) => s - first),
-        ),
+        rows,
+        divisions: song.channels.map((channel, r) => {
+          const divided: Record<number, number> = {}
+          for (const s of rows[r]!) {
+            const division = cellDivision(section, channel.id, first + s)
+            if (division > MIN_DIVISION) divided[s] = division
+          }
+          return divided
+        }),
       })
     }
   }
@@ -145,6 +160,7 @@ export function deleteBars(song: Song, range: BarRange): BarRange | null {
       if (kept.length) section.steps[channelId] = kept
       else delete section.steps[channelId]
     }
+    section.divisions = mapDivisionSteps(section.divisions, (s) => (s < from ? s : s >= to ? s - (to - from) : null))
     section.bars -= hi - lo
   }
   pinTempos(song.sections, before)
@@ -160,16 +176,25 @@ function spliceInto(song: Song, section: Section, atBar: number, slices: readonl
   for (const [channelId, list] of Object.entries(section.steps)) {
     next[channelId] = list.map((s) => (s >= from ? s + added : s))
   }
+  const divisions = mapDivisionSteps(section.divisions, (s) => (s >= from ? s + added : s))
   song.channels.forEach((channel, r) => {
     const incoming: number[] = []
+    const divided: Record<number, number> = {}
     slices.forEach((slice, j) => {
-      for (const s of slice.rows[r] ?? []) if (s >= 0 && s < perBar) incoming.push(from + j * perBar + s)
+      for (const s of slice.rows[r] ?? []) {
+        if (s < 0 || s >= perBar) continue
+        incoming.push(from + j * perBar + s)
+        const division = slice.divisions[r]?.[s]
+        if (division !== undefined && division > MIN_DIVISION) divided[from + j * perBar + s] = division
+      }
     })
     if (!incoming.length) return
     next[channel.id] = [...new Set([...(next[channel.id] ?? []), ...incoming])].sort((a, b) => a - b)
+    if (Object.keys(divided).length) divisions[channel.id] = { ...(divisions[channel.id] ?? {}), ...divided }
   })
   for (const channelId of Object.keys(next)) if (!next[channelId]!.length) delete next[channelId]
   section.steps = next
+  section.divisions = pruneDivisions(divisions, next)
   section.bars += slices.length
 }
 
@@ -243,6 +268,8 @@ export function insertBars(song: Song, clip: BarClip, atBar: number): BarRange |
         else delete host.steps[channelId]
         if (moved.length) tail.steps[channelId] = moved
       }
+      tail.divisions = mapDivisionSteps(host.divisions, (s) => (s >= cut ? s - cut : null))
+      host.divisions = mapDivisionSteps(host.divisions, (s) => (s < cut ? s : null))
       host.bars = bar
       song.sections.splice(index + 1, 0, tail)
     }

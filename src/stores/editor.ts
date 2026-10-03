@@ -92,6 +92,16 @@ export const useEditorStore = defineStore('editor', () => {
     return copy() && deleteSelection()
   }
 
+  /** Divide every gate in the selection `division` ways (1 makes them plain gates); the selection stays. */
+  function divideSelection(division: number): boolean {
+    const range = liveSelection.value
+    if (!range) return false
+    return songStore.divideBlock(range, division) !== null
+  }
+
+  /** The distinct divisions of the gates in the selection, smallest first; empty without a selection or gates. */
+  const selectionDivisions = computed(() => (liveSelection.value ? songStore.blockDivisions(liveSelection.value) : []))
+
   /** Put the clipboard down at the cursor (see above). Returns the range it covered. */
   function paste(): CellRange | null {
     const block = clipboard.value
@@ -154,6 +164,8 @@ export const useEditorStore = defineStore('editor', () => {
     copy,
     cut,
     deleteSelection,
+    divideSelection,
+    selectionDivisions,
     paste,
     copyBars,
     cutBars,

@@ -43,6 +43,16 @@ backend, and songs autosave to local storage.
   song.
 - **Draw gates** by clicking or click-dragging across the grid; Enter/Space
   toggles the focused cell for keyboard users.
+- **Divide a cell.** Right-click a cell (or press the Menu key or Shift+F10 on
+  a focused one) and pick 1 to 8 from the menu: the step then fires that many
+  evenly spaced gates back to back inside it, like a ratchet, instead of one
+  gate held for the whole step, and 1 makes it a plain gate again. An empty
+  cell is turned on. Right-click a cell inside the selected block and the
+  choice applies to every gate in the block (its empty cells stay empty), so a
+  whole run can be divided at once; the menu marks the divisions the block
+  already holds. A divided cell is drawn as that many short bars and never
+  joins the gates next to it into one long gate. Divisions travel with blocks
+  and bars when they are copied, cut and pasted, and are saved with the song.
 - **Select, copy and paste blocks.** Shift+drag across the grid selects a block
   of cells spanning as many tracks and steps as the drag covers (Shift+Enter or
   Shift+Space stretches the selection to the focused cell for keyboard users).
@@ -78,7 +88,10 @@ backend, and songs autosave to local storage.
   palette repeats.
 - **Gates follow the grid.** A gate goes high for the whole of every step it is
   drawn on, and consecutive on-steps hold it high as one long gate until the
-  next empty step. The grid draws such a run as one continuous bar.
+  next empty step. The grid draws such a run as one continuous bar. A divided
+  step breaks the run on either side of it: its gates each take an equal share
+  of the step (of the swung step, when it swings) and drop 2 ms before the
+  next one, so the module sees every one of them as a fresh trigger.
 - **Sample-accurate-ish timing**: a look-ahead scheduler hands messages to the
   MIDI port with explicit timestamps, so JavaScript timer jitter never reaches
   the module. Edits while playing are picked up live.
@@ -283,7 +296,8 @@ import and out-of-range values are clamped; see `src/core/serialization.ts`.
       "bars": 4,
       "subdivision": 4,                // steps per beat
       "swing": 66,                     // 50..75, 50 = straight; null = inherit from the previous section
-      "steps": { "ch_1": [0, 4, 8, 12] } // "on" step indices per channel
+      "steps": { "ch_1": [0, 4, 8, 12] }, // "on" step indices per channel
+      "divisions": { "ch_1": { "12": 3 } } // step -> gates it is divided into (2..8) per channel; absent = one gate
     }
   ]
 }

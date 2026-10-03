@@ -27,6 +27,12 @@ export const DEFAULT_SWING = MIN_SWING
 export const MIN_BARS = 1
 export const MAX_BARS = 256
 export const SUBDIVISIONS = [1, 2, 3, 4, 6, 8] as const
+/**
+ * How many ways one cell can be divided (see `Section.divisions`): a divided step fires that
+ * many evenly spaced gates inside the step instead of one.
+ */
+export const MIN_DIVISION = 1
+export const MAX_DIVISION = 8
 export const TIME_SIGNATURE_UNITS = [2, 4, 8, 16] as const
 /** The module responds to MIDI notes starting at C2 (36); output 1 = note 36. */
 export const DEFAULT_BASE_NOTE = 36
@@ -65,6 +71,13 @@ export interface Section {
   swing: number | null
   /** channelId -> sorted, de-duplicated list of "on" step indices within this section. */
   steps: Record<string, number[]>
+  /**
+   * channelId -> step index -> how many gates that on-step is divided into (2..MAX_DIVISION).
+   * A divided step fires that many evenly spaced gates inside the step, each taking an equal
+   * share of it, instead of holding one gate for the whole step; it never ties to the steps
+   * around it. Steps absent here, and steps that are off, fire one gate (MIN_DIVISION).
+   */
+  divisions: Record<string, Record<number, number>>
 }
 
 export interface Channel {
@@ -150,6 +163,7 @@ export function createSection(overrides: Partial<Section> = {}): Section {
     subdivision: 4,
     swing: null,
     steps: {},
+    divisions: {},
     ...overrides,
   }
 }
@@ -190,7 +204,7 @@ export function normalizeLoopRange(range: unknown, bars: number): LoopRange | nu
   return hi > lo ? { start: lo, end: hi } : null
 }
 
-export function isStepOn(section: Section, channelId: string, step: number): boolean {
+export function isStepOn(section: Pick<Section, 'steps'>, channelId: string, step: number): boolean {
   const list = section.steps[channelId]
   return list !== undefined && list.includes(step)
 }
@@ -208,6 +222,81 @@ export function withStepSet(list: readonly number[] | undefined, step: number, o
   const has = current.includes(step)
   if (on === has) return [...current]
   return withStepToggled(current, step)
+}
+
+/** How many gates an on-step of a section fires: its division, or one for an undivided or off step. */
+export function cellDivision(section: Pick<Section, 'steps' | 'divisions'>, channelId: string, step: number): number {
+  if (!isStepOn(section, channelId, step)) return MIN_DIVISION
+  return section.divisions[channelId]?.[step] ?? MIN_DIVISION
+}
+
+/** A division as the song keeps it: a whole number from MIN_DIVISION to MAX_DIVISION. */
+export function clampDivision(value: number): number {
+  return Number.isFinite(value) ? clamp(Math.round(value), MIN_DIVISION, MAX_DIVISION) : MIN_DIVISION
+}
+
+/**
+ * Returns a new channel -> step -> division map with `step` of `channelId` divided `division`
+ * ways (MIN_DIVISION, or an invalid number, takes the step out of the map, and a channel left
+ * with no divided steps goes with it). Does not mutate.
+ */
+export function withDivisionSet(
+  divisions: Readonly<Record<string, Record<number, number>>>,
+  channelId: string,
+  step: number,
+  division: number,
+): Record<string, Record<number, number>> {
+  const out: Record<string, Record<number, number>> = { ...divisions }
+  const row = { ...(out[channelId] ?? {}) }
+  const value = clampDivision(division)
+  if (value > MIN_DIVISION) row[step] = value
+  else delete row[step]
+  if (Object.keys(row).length) out[channelId] = row
+  else delete out[channelId]
+  return out
+}
+
+/**
+ * Drop divisions of steps that are not on (a step turned off, or a channel or section cut
+ * down) so the map only ever says something about gates that exist.
+ */
+export function pruneDivisions(
+  divisions: Readonly<Record<string, Record<number, number>>>,
+  steps: Readonly<Record<string, readonly number[]>>,
+): Record<string, Record<number, number>> {
+  const out: Record<string, Record<number, number>> = {}
+  for (const [channelId, row] of Object.entries(divisions)) {
+    const on = steps[channelId]
+    if (!on) continue
+    const kept: Record<number, number> = {}
+    for (const [key, value] of Object.entries(row)) {
+      const step = Number(key)
+      const division = clampDivision(value)
+      if (on.includes(step) && division > MIN_DIVISION) kept[step] = division
+    }
+    if (Object.keys(kept).length) out[channelId] = kept
+  }
+  return out
+}
+
+/**
+ * Move the divided steps of every channel to where `map` sends them (null drops a step), as
+ * when bars are taken out of or put into a section. Does not mutate.
+ */
+export function mapDivisionSteps(
+  divisions: Readonly<Record<string, Record<number, number>>>,
+  map: (step: number) => number | null,
+): Record<string, Record<number, number>> {
+  const out: Record<string, Record<number, number>> = {}
+  for (const [channelId, row] of Object.entries(divisions)) {
+    const moved: Record<number, number> = {}
+    for (const [key, value] of Object.entries(row)) {
+      const to = map(Number(key))
+      if (to !== null) moved[to] = value
+    }
+    if (Object.keys(moved).length) out[channelId] = moved
+  }
+  return out
 }
 
 /** Drop step indices that no longer fit after a section is shortened. */
@@ -234,6 +323,38 @@ export function groupRuns(steps: readonly number[]): Array<[number, number]> {
     else runs.push([s, s])
   }
   return runs
+}
+
+/**
+ * One gate of a channel inside a section, in steps: the run of consecutive on-steps it
+ * holds through (`start` to `end` inclusive) and, for a divided step, which of the step's
+ * `division` slots it is (`slot`, from 0). A divided step is never part of a longer run.
+ */
+export interface Gate {
+  start: number
+  end: number
+  division: number
+  slot: number
+}
+
+/**
+ * The gates a list of on-steps makes, in time order: undivided steps join into runs as
+ * `groupRuns` does, with a divided step breaking the run on either side of it and firing
+ * `division` gates of its own.
+ */
+export function gatesOf(steps: readonly number[], divisionOf: (step: number) => number): Gate[] {
+  const divided = new Set<number>()
+  const plain: number[] = []
+  for (const step of new Set(steps)) {
+    if (clampDivision(divisionOf(step)) > MIN_DIVISION) divided.add(step)
+    else plain.push(step)
+  }
+  const gates: Gate[] = groupRuns(plain).map(([start, end]) => ({ start, end, division: MIN_DIVISION, slot: 0 }))
+  for (const step of divided) {
+    const division = clampDivision(divisionOf(step))
+    for (let slot = 0; slot < division; slot++) gates.push({ start: step, end: step, division, slot })
+  }
+  return gates.sort((a, b) => a.start - b.start || a.slot - b.slot)
 }
 
 export function clamp(value: number, min: number, max: number): number {

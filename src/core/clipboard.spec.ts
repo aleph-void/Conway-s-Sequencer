@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   clampRange,
   clearRange,
+  divideRange,
   emptyBlock,
+  rangeDivisions,
   rangeContains,
   rangeFromCorners,
   readBlock,
@@ -65,7 +67,7 @@ describe('readBlock', () => {
     const tl = buildTimeline(s)
     // Channels 0–1, steps 5–9: the last three of A and the first two of B.
     const block = readBlock(s, tl, { channelStart: 0, channelEnd: 2, stepStart: 5, stepEnd: 10 })
-    expect(block).toEqual({ channels: 2, steps: 5, rows: [[0, 2], [1, 3]] })
+    expect(block).toEqual({ channels: 2, steps: 5, rows: [[0, 2], [1, 3]], divisions: [{}, {}] })
   })
 
   it('leaves rows empty beyond the song and the channel list', () => {
@@ -73,17 +75,17 @@ describe('readBlock', () => {
     s.sections[1]!.steps = { c2: [3] }
     const tl = buildTimeline(s)
     const block = readBlock(s, tl, { channelStart: 2, channelEnd: 5, stepStart: 10, stepEnd: 14 })
-    expect(block).toEqual({ channels: 3, steps: 4, rows: [[1], [], []] })
+    expect(block).toEqual({ channels: 3, steps: 4, rows: [[1], [], []], divisions: [{}, {}, {}] })
   })
 
   it('makes an empty block', () => {
-    expect(emptyBlock(2, 3)).toEqual({ channels: 2, steps: 3, rows: [[], []] })
-    expect(emptyBlock(0, 0)).toEqual({ channels: 0, steps: 0, rows: [] })
+    expect(emptyBlock(2, 3)).toEqual({ channels: 2, steps: 3, rows: [[], []], divisions: [{}, {}] })
+    expect(emptyBlock(0, 0)).toEqual({ channels: 0, steps: 0, rows: [], divisions: [] })
   })
 })
 
 describe('writeBlock', () => {
-  const block: Block = { channels: 2, steps: 3, rows: [[0, 2], [1]] }
+  const block: Block = { channels: 2, steps: 3, rows: [[0, 2], [1]], divisions: [{}, {}] }
 
   it('puts the block down at a corner, replacing what the cells held, and reports the range', () => {
     const s = song()
@@ -138,5 +140,50 @@ describe('clearRange', () => {
     expect(s.sections[0]!.steps).toEqual({ c0: [0], c2: [4] })
     expect(s.sections[1]!.steps).toEqual({ c0: [1], c1: [1] })
     expect(clearRange(s, tl, { channelStart: 0, channelEnd: 1, stepStart: 20, stepEnd: 30 })).toBeNull()
+  })
+})
+
+describe('divisions in blocks', () => {
+  it('lifts divisions with the gates and puts them down again, plain where the block says so', () => {
+    const s = song()
+    s.sections[0]!.steps = { c0: [5, 7], c1: [6] }
+    s.sections[0]!.divisions = { c0: { 7: 3 }, c1: { 6: 2 } }
+    const tl = buildTimeline(s)
+    const block = readBlock(s, tl, { channelStart: 0, channelEnd: 2, stepStart: 5, stepEnd: 8 })
+    expect(block).toEqual({ channels: 2, steps: 3, rows: [[0, 2], [1]], divisions: [{ 2: 3 }, { 1: 2 }] })
+
+    // Pasting over a divided gate with a plain one makes it plain; over an empty cell it is written whole.
+    s.sections[1]!.steps = { c0: [1] }
+    s.sections[1]!.divisions = { c0: { 1: 5 } }
+    writeBlock(s, tl, block, 0, 9)
+    expect(s.sections[1]!.steps).toEqual({ c0: [1, 3], c1: [2] })
+    expect(s.sections[1]!.divisions).toEqual({ c0: { 3: 3 }, c1: { 2: 2 } })
+    clearRange(s, tl, { channelStart: 0, channelEnd: 2, stepStart: 9, stepEnd: 12 })
+    expect(s.sections[1]!.divisions).toEqual({})
+  })
+
+  it('divides the gates inside a range, not its empty cells, and lists the divisions it holds', () => {
+    const s = song()
+    s.sections[0]!.steps = { c0: [7], c1: [6] }
+    s.sections[1]!.steps = { c0: [0] }
+    const tl = buildTimeline(s)
+    const range = { channelStart: 0, channelEnd: 2, stepStart: 6, stepEnd: 10 }
+    expect(rangeDivisions(s, tl, range)).toEqual([1])
+    expect(divideRange(s, tl, range, 4)).toEqual(range)
+    expect(s.sections[0]!.divisions).toEqual({ c0: { 7: 4 }, c1: { 6: 4 } })
+    expect(s.sections[1]!.divisions).toEqual({ c0: { 0: 4 } })
+    expect(s.sections[0]!.steps).toEqual({ c0: [7], c1: [6] })
+    s.sections[1]!.divisions = { c0: { 0: 2 } }
+    expect(rangeDivisions(s, tl, range)).toEqual([2, 4])
+    expect(rangeDivisions(s, tl, { channelStart: 2, channelEnd: 3, stepStart: 0, stepEnd: 4 })).toEqual([])
+    expect(divideRange(s, tl, { channelStart: 5, channelEnd: 6, stepStart: 0, stepEnd: 1 }, 2)).toBeNull()
+    // Clipped to the song, like a paste.
+    expect(divideRange(s, tl, { channelStart: 1, channelEnd: 9, stepStart: 6, stepEnd: 99 }, 1)).toEqual({
+      channelStart: 1,
+      channelEnd: 3,
+      stepStart: 6,
+      stepEnd: 12,
+    })
+    expect(s.sections[0]!.divisions).toEqual({ c0: { 7: 4 } })
   })
 })

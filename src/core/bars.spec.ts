@@ -39,6 +39,7 @@ describe('readBars', () => {
       timeSignature: { beats: 4, unit: 4 },
       subdivision: 4,
       rows: [[0, 15], [1]],
+      divisions: [{}, {}],
     })
     expect(clip.bars[1]).toEqual({
       name: 'B',
@@ -46,6 +47,7 @@ describe('readBars', () => {
       timeSignature: { beats: 3, unit: 4 },
       subdivision: 2,
       rows: [[], [5]],
+      divisions: [{}, {}],
     })
     // The clip holds copies: editing the song afterwards does not reach it.
     s.sections[0]!.timeSignature.beats = 7
@@ -103,6 +105,7 @@ describe('insertBars', () => {
     timeSignature: { beats: 4 as const, unit: 4 as const },
     subdivision: 4 as const,
     rows,
+    divisions: rows.map(() => ({})),
     ...extra,
   })
 
@@ -187,5 +190,43 @@ describe('insertBars', () => {
     expect(insertBars(s, { channels: 2, bars: [slice([[0], [1]])] }, 0)).toEqual({ start: 0, end: 1 })
     expect(s.sections.map((x) => [x.name, x.bars, x.tempo])).toEqual([['X', 1, 90]])
     expect(s.sections[0]!.steps).toEqual({ a: [0], b: [1] })
+  })
+})
+
+describe('divisions in bars', () => {
+  it('travel with their bars when bars are read, deleted and inserted', () => {
+    const s = song({ name: 'A', tempo: 120, bars: 3, steps: { a: [0, 16, 17, 32], b: [20] } })
+    s.sections[0]!.divisions = { a: { 16: 3, 32: 2 }, b: { 20: 4 } }
+    const clip = readBars(s, { start: 1, end: 2 })!
+    expect(clip.bars[0]!.rows).toEqual([[0, 1], [4]])
+    expect(clip.bars[0]!.divisions).toEqual([{ 0: 3 }, { 4: 4 }])
+
+    expect(deleteBars(s, { start: 1, end: 2 })).toEqual({ start: 1, end: 2 })
+    expect(s.sections[0]!.steps).toEqual({ a: [0, 16] })
+    expect(s.sections[0]!.divisions).toEqual({ a: { 16: 2 } })
+
+    expect(insertBars(s, clip, 0)).toEqual({ start: 0, end: 1 })
+    expect(s.sections[0]!.steps).toEqual({ a: [0, 1, 16, 32], b: [4] })
+    expect(s.sections[0]!.divisions).toEqual({ a: { 0: 3, 32: 2 }, b: { 4: 4 } })
+  })
+
+  it('split a section around bars of another meter without losing their divisions', () => {
+    const s = song({ name: 'A', tempo: 120, bars: 2, steps: { a: [3, 20] } })
+    s.sections[0]!.divisions = { a: { 3: 2, 20: 5 } }
+    const waltz: BarClip['bars'][number] = {
+      name: 'W',
+      tempo: 90,
+      timeSignature: { beats: 3, unit: 4 },
+      subdivision: 2,
+      rows: [[1], []],
+      divisions: [{ 1: 6 }, {}],
+    }
+    expect(insertBars(s, { channels: 2, bars: [waltz] }, 1)).toEqual({ start: 1, end: 2 })
+    expect(s.sections.map((x) => x.name)).toEqual(['A', 'W', 'A'])
+    expect(s.sections[0]!.divisions).toEqual({ a: { 3: 2 } })
+    expect(s.sections[1]!.steps).toEqual({ a: [1] })
+    expect(s.sections[1]!.divisions).toEqual({ a: { 1: 6 } })
+    expect(s.sections[2]!.steps).toEqual({ a: [4] })
+    expect(s.sections[2]!.divisions).toEqual({ a: { 4: 5 } })
   })
 })

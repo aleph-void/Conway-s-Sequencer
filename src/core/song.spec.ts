@@ -17,6 +17,14 @@ import {
   stepsPerBar,
   withStepSet,
   withStepToggled,
+  MIN_DIVISION,
+  MAX_DIVISION,
+  cellDivision,
+  clampDivision,
+  gatesOf,
+  mapDivisionSteps,
+  pruneDivisions,
+  withDivisionSet,
 } from './song'
 
 describe('song factories', () => {
@@ -167,5 +175,63 @@ describe('loop points', () => {
     expect(normalizeLoopRange({ start: 1 }, 8)).toBeNull()
     expect(normalizeLoopRange({ start: 1, end: Number.NaN }, 8)).toBeNull()
     expect(normalizeLoopRange({ start: 1, end: Number.POSITIVE_INFINITY }, 8)).toBeNull()
+  })
+})
+
+describe('divided steps', () => {
+  it('clamps a division to a whole number from 1 to 8', () => {
+    expect(MIN_DIVISION).toBe(1)
+    expect(MAX_DIVISION).toBe(8)
+    expect(clampDivision(3)).toBe(3)
+    expect(clampDivision(2.6)).toBe(3)
+    expect(clampDivision(0)).toBe(1)
+    expect(clampDivision(12)).toBe(8)
+    expect(clampDivision(NaN)).toBe(1)
+  })
+
+  it('sets and clears divisions immutably, dropping empty channels', () => {
+    const one = withDivisionSet({}, 'a', 3, 4)
+    expect(one).toEqual({ a: { 3: 4 } })
+    const two = withDivisionSet(one, 'a', 5, 2)
+    expect(two).toEqual({ a: { 3: 4, 5: 2 } })
+    expect(one).toEqual({ a: { 3: 4 } })
+    expect(withDivisionSet(two, 'a', 3, 1)).toEqual({ a: { 5: 2 } })
+    expect(withDivisionSet(withDivisionSet(two, 'a', 3, 1), 'a', 5, 0)).toEqual({})
+    expect(withDivisionSet({}, 'a', 0, 1)).toEqual({})
+    expect(withDivisionSet({}, 'a', 0, 99)).toEqual({ a: { 0: 8 } })
+  })
+
+  it('reads a cell\'s division only while the step is on', () => {
+    const section = createSection({ steps: { a: [2] }, divisions: { a: { 2: 3, 4: 5 } } })
+    expect(cellDivision(section, 'a', 2)).toBe(3)
+    expect(cellDivision(section, 'a', 4)).toBe(1)
+    expect(cellDivision(section, 'a', 0)).toBe(1)
+    expect(cellDivision(section, 'b', 2)).toBe(1)
+  })
+
+  it('prunes divisions of steps that are off, out of range or plain', () => {
+    const pruned = pruneDivisions({ a: { 1: 3, 2: 4, 7: 1 }, b: { 0: 2 }, c: { 0: 9 } }, { a: [1, 7], c: [0] })
+    expect(pruned).toEqual({ a: { 1: 3 }, c: { 0: 8 } })
+  })
+
+  it('moves divisions with their steps and drops the ones sent nowhere', () => {
+    const moved = mapDivisionSteps({ a: { 1: 3, 5: 2 }, b: { 2: 4 } }, (s) => (s < 2 ? s : s < 4 ? null : s - 2))
+    expect(moved).toEqual({ a: { 1: 3, 3: 2 } })
+  })
+
+  it('turns on-steps into gates: runs of plain steps, and a divided step\'s own gates', () => {
+    const divisions: Record<number, number> = { 2: 3, 6: 2 }
+    const gates = gatesOf([0, 1, 2, 3, 4, 6, 9], (s) => divisions[s] ?? 1)
+    expect(gates).toEqual([
+      { start: 0, end: 1, division: 1, slot: 0 },
+      { start: 2, end: 2, division: 3, slot: 0 },
+      { start: 2, end: 2, division: 3, slot: 1 },
+      { start: 2, end: 2, division: 3, slot: 2 },
+      { start: 3, end: 4, division: 1, slot: 0 },
+      { start: 6, end: 6, division: 2, slot: 0 },
+      { start: 6, end: 6, division: 2, slot: 1 },
+      { start: 9, end: 9, division: 1, slot: 0 },
+    ])
+    expect(gatesOf([], () => 4)).toEqual([])
   })
 })
