@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEditorStore } from '../stores/editor'
@@ -6,6 +7,16 @@ import { useSongStore } from '../stores/song'
 import { useTransportStore } from '../stores/transport'
 import { useUiStore } from '../stores/ui'
 import SequencerGrid from './SequencerGrid.vue'
+
+// jsdom 30 ships a real PointerEvent whose inherited MouseEvent fields
+// (button, buttons, shiftKey, ...) are getter-only. Vue Test Utils' `trigger`
+// passes the options to the constructor and then re-assigns them onto the
+// event, which throws on those fields, so pointer events are dispatched here.
+async function pointer(target: { element: Element }, type: string, init: PointerEventInit = {}) {
+  const bubbles = !type.endsWith('enter') && !type.endsWith('leave')
+  target.element.dispatchEvent(new PointerEvent(type, { bubbles, cancelable: bubbles, ...init }))
+  await nextTick()
+}
 
 describe('SequencerGrid', () => {
   beforeEach(() => {
@@ -64,28 +75,28 @@ describe('SequencerGrid', () => {
     const channel = store.song.channels[0]!
 
     const c0 = wrapper.get('[data-testid="cell-0-0-0"]')
-    await c0.trigger('pointerdown', { button: 0, buttons: 1 })
+    await pointer(c0, 'pointerdown', { button: 0, buttons: 1 })
     expect(section.steps[channel.id]).toEqual([0])
     expect(c0.classes()).toContain('on')
     expect(c0.attributes('aria-checked')).toBe('true')
 
-    await wrapper.get('[data-testid="cell-0-0-1"]').trigger('pointerenter', { buttons: 1 })
-    await wrapper.get('[data-testid="cell-0-0-2"]').trigger('pointerenter', { buttons: 1 })
+    await pointer(wrapper.get('[data-testid="cell-0-0-1"]'), 'pointerenter', { buttons: 1 })
+    await pointer(wrapper.get('[data-testid="cell-0-0-2"]'), 'pointerenter', { buttons: 1 })
     expect(section.steps[channel.id]).toEqual([0, 1, 2])
 
     // Releasing the pointer ends the stroke; hovering no longer paints.
     window.dispatchEvent(new Event('pointerup'))
-    await wrapper.get('[data-testid="cell-0-0-3"]').trigger('pointerenter', { buttons: 1 })
+    await pointer(wrapper.get('[data-testid="cell-0-0-3"]'), 'pointerenter', { buttons: 1 })
     expect(section.steps[channel.id]).toEqual([0, 1, 2])
 
     // Starting on an "on" cell erases.
-    await wrapper.get('[data-testid="cell-0-0-1"]').trigger('pointerdown', { button: 0, buttons: 1 })
-    await wrapper.get('[data-testid="cell-0-0-2"]').trigger('pointerenter', { buttons: 1 })
+    await pointer(wrapper.get('[data-testid="cell-0-0-1"]'), 'pointerdown', { button: 0, buttons: 1 })
+    await pointer(wrapper.get('[data-testid="cell-0-0-2"]'), 'pointerenter', { buttons: 1 })
     expect(section.steps[channel.id]).toEqual([0])
 
     // Right button does nothing; hovering without a pressed button does nothing.
-    await wrapper.get('[data-testid="cell-0-0-5"]').trigger('pointerdown', { button: 2, buttons: 2 })
-    await wrapper.get('[data-testid="cell-0-0-6"]').trigger('pointerenter', { buttons: 0 })
+    await pointer(wrapper.get('[data-testid="cell-0-0-5"]'), 'pointerdown', { button: 2, buttons: 2 })
+    await pointer(wrapper.get('[data-testid="cell-0-0-6"]'), 'pointerenter', { buttons: 0 })
     expect(section.steps[channel.id]).toEqual([0])
     wrapper.unmount()
   })
@@ -98,10 +109,10 @@ describe('SequencerGrid', () => {
     const cell = (step: number) => wrapper.get(`[data-testid="cell-0-0-${step}"]`)
 
     // A touch pointerdown draws nothing: the browser may still turn it into a scroll.
-    await cell(0).trigger('pointerdown', { button: 0, buttons: 1, pointerType: 'touch' })
+    await pointer(cell(0), 'pointerdown', { button: 0, buttons: 1, pointerType: 'touch' })
     expect(section.steps[channel.id]).toBeUndefined()
     // Neither does moving the finger across cells.
-    await cell(1).trigger('pointerenter', { buttons: 1, pointerType: 'touch' })
+    await pointer(cell(1), 'pointerenter', { buttons: 1, pointerType: 'touch' })
     expect(section.steps[channel.id]).toBeUndefined()
     // The tap's click is what toggles.
     await cell(0).trigger('click')
@@ -110,7 +121,7 @@ describe('SequencerGrid', () => {
     expect(section.steps[channel.id]).toBeUndefined()
 
     // A mouse paints on pointerdown and its click must not toggle the cell back.
-    await cell(3).trigger('pointerdown', { button: 0, buttons: 1, pointerType: 'mouse' })
+    await pointer(cell(3), 'pointerdown', { button: 0, buttons: 1, pointerType: 'mouse' })
     await cell(3).trigger('click')
     expect(section.steps[channel.id]).toEqual([3])
     window.dispatchEvent(new Event('pointerup'))
@@ -209,28 +220,28 @@ describe('SequencerGrid', () => {
       const wrapper = mount(SequencerGrid, { attachTo: document.body })
       expect(wrapper.find('[data-testid="selection"]').exists()).toBe(false)
 
-      await cell(wrapper, 1, 2).trigger('pointerdown', { button: 0, buttons: 1, shiftKey: true })
+      await pointer(cell(wrapper, 1, 2), 'pointerdown', { button: 0, buttons: 1, shiftKey: true })
       expect(store.song.sections[0]!.steps).toEqual({})
       expect(editor.selection).toEqual({ channelStart: 1, channelEnd: 2, stepStart: 2, stepEnd: 3 })
       expect(selected(wrapper)).toEqual(['cell-1-0-2'])
       expect(wrapper.get('[data-testid="selection-size"]').text()).toBe('1 track × 1 step selected')
 
-      await cell(wrapper, 2, 4).trigger('pointerenter', { buttons: 1 })
+      await pointer(cell(wrapper, 2, 4), 'pointerenter', { buttons: 1 })
       expect(editor.selection).toEqual({ channelStart: 1, channelEnd: 3, stepStart: 2, stepEnd: 5 })
       expect(selected(wrapper)).toEqual(['cell-1-0-2', 'cell-1-0-3', 'cell-1-0-4', 'cell-2-0-2', 'cell-2-0-3', 'cell-2-0-4'])
       expect(wrapper.get('[data-testid="selection-size"]').text()).toBe('2 tracks × 3 steps selected')
       // Dragging back past the anchor flips the rectangle around it.
-      await cell(wrapper, 0, 0).trigger('pointerenter', { buttons: 1 })
+      await pointer(cell(wrapper, 0, 0), 'pointerenter', { buttons: 1 })
       expect(editor.selection).toEqual({ channelStart: 0, channelEnd: 2, stepStart: 0, stepEnd: 3 })
       expect(store.song.sections[0]!.steps).toEqual({})
 
       // Releasing the pointer ends the drag; hovering no longer stretches it.
       window.dispatchEvent(new Event('pointerup'))
-      await cell(wrapper, 5, 9).trigger('pointerenter', { buttons: 1 })
+      await pointer(cell(wrapper, 5, 9), 'pointerenter', { buttons: 1 })
       expect(editor.selection).toEqual({ channelStart: 0, channelEnd: 2, stepStart: 0, stepEnd: 3 })
 
       // A plain press paints as before and leaves the selection alone; the ✕ clears it.
-      await cell(wrapper, 5, 9).trigger('pointerdown', { button: 0, buttons: 1 })
+      await pointer(cell(wrapper, 5, 9), 'pointerdown', { button: 0, buttons: 1 })
       expect(store.song.sections[0]!.steps[store.song.channels[5]!.id]).toEqual([9])
       expect(editor.selection).not.toBeNull()
       window.dispatchEvent(new Event('pointerup'))
@@ -306,8 +317,8 @@ describe('SequencerGrid', () => {
       expect(wrapper.find('[data-testid="paste-bars"]').exists()).toBe(false)
 
       // Dragging across the loop strip selects the bars.
-      await wrapper.get('[data-testid="loop-bar-1"]').trigger('pointerdown', { button: 0, buttons: 1 })
-      await wrapper.get('[data-testid="loop-bar-2"]').trigger('pointerenter', { buttons: 1 })
+      await pointer(wrapper.get('[data-testid="loop-bar-1"]'), 'pointerdown', { button: 0, buttons: 1 })
+      await pointer(wrapper.get('[data-testid="loop-bar-2"]'), 'pointerenter', { buttons: 1 })
       window.dispatchEvent(new Event('pointerup'))
       await wrapper.vm.$nextTick()
       expect(wrapper.get('[data-testid="bar-selection-size"]').text()).toBe('2 bars selected')
@@ -631,22 +642,22 @@ describe('SequencerGrid', () => {
     it('loops one bar on a click and a range on a drag', async () => {
       const store = useSongStore()
       const wrapper = mount(SequencerGrid, { attachTo: document.body })
-      await bar(wrapper, 1).trigger('pointerdown', { button: 0, buttons: 1 })
+      await pointer(bar(wrapper, 1), 'pointerdown', { button: 0, buttons: 1 })
       expect(store.song.settings.loopRange).toEqual({ start: 1, end: 2 })
-      await bar(wrapper, 2).trigger('pointerenter', { buttons: 1 })
-      await bar(wrapper, 3).trigger('pointerenter', { buttons: 1 })
+      await pointer(bar(wrapper, 2), 'pointerenter', { buttons: 1 })
+      await pointer(bar(wrapper, 3), 'pointerenter', { buttons: 1 })
       expect(store.song.settings.loopRange).toEqual({ start: 1, end: 4 })
       // Dragging back the other way shrinks the range, and past the anchor flips it.
-      await bar(wrapper, 2).trigger('pointerenter', { buttons: 1 })
+      await pointer(bar(wrapper, 2), 'pointerenter', { buttons: 1 })
       expect(store.song.settings.loopRange).toEqual({ start: 1, end: 3 })
-      await bar(wrapper, 0).trigger('pointerenter', { buttons: 1 })
+      await pointer(bar(wrapper, 0), 'pointerenter', { buttons: 1 })
       expect(store.song.settings.loopRange).toEqual({ start: 0, end: 2 })
       // Releasing the pointer ends the drag.
       window.dispatchEvent(new Event('pointerup'))
-      await bar(wrapper, 3).trigger('pointerenter', { buttons: 1 })
+      await pointer(bar(wrapper, 3), 'pointerenter', { buttons: 1 })
       expect(store.song.settings.loopRange).toEqual({ start: 0, end: 2 })
       // The right button does nothing; a mouse click after its own pointerdown does not re-set the bar.
-      await bar(wrapper, 3).trigger('pointerdown', { button: 2, buttons: 2 })
+      await pointer(bar(wrapper, 3), 'pointerdown', { button: 2, buttons: 2 })
       await bar(wrapper, 3).trigger('click')
       expect(store.song.settings.loopRange).toEqual({ start: 0, end: 2 })
       wrapper.unmount()
@@ -655,17 +666,17 @@ describe('SequencerGrid', () => {
     it('extends the range with Shift', async () => {
       const store = useSongStore()
       const wrapper = mount(SequencerGrid, { attachTo: document.body })
-      await bar(wrapper, 1).trigger('pointerdown', { button: 0, buttons: 1 })
-      await bar(wrapper, 3).trigger('pointerdown', { button: 0, buttons: 1, shiftKey: true })
+      await pointer(bar(wrapper, 1), 'pointerdown', { button: 0, buttons: 1 })
+      await pointer(bar(wrapper, 3), 'pointerdown', { button: 0, buttons: 1, shiftKey: true })
       expect(store.song.settings.loopRange).toEqual({ start: 1, end: 4 })
       // A Shift-drag keeps stretching from the far end of the range.
-      await bar(wrapper, 2).trigger('pointerenter', { buttons: 1 })
+      await pointer(bar(wrapper, 2), 'pointerenter', { buttons: 1 })
       expect(store.song.settings.loopRange).toEqual({ start: 1, end: 3 })
       window.dispatchEvent(new Event('pointerup'))
-      await bar(wrapper, 0).trigger('pointerdown', { button: 0, buttons: 1, shiftKey: true })
+      await pointer(bar(wrapper, 0), 'pointerdown', { button: 0, buttons: 1, shiftKey: true })
       expect(store.song.settings.loopRange).toEqual({ start: 0, end: 3 })
       // Shift-dragging the start edge moves that edge.
-      await bar(wrapper, 1).trigger('pointerenter', { buttons: 1 })
+      await pointer(bar(wrapper, 1), 'pointerenter', { buttons: 1 })
       expect(store.song.settings.loopRange).toEqual({ start: 1, end: 3 })
       window.dispatchEvent(new Event('pointerup'))
       wrapper.unmount()
@@ -674,9 +685,9 @@ describe('SequencerGrid', () => {
     it('loops a bar on a finger tap and leaves a touch drag to the browser', async () => {
       const store = useSongStore()
       const wrapper = mount(SequencerGrid, { attachTo: document.body })
-      await bar(wrapper, 2).trigger('pointerdown', { button: 0, buttons: 1, pointerType: 'touch' })
+      await pointer(bar(wrapper, 2), 'pointerdown', { button: 0, buttons: 1, pointerType: 'touch' })
       expect(store.song.settings.loopRange).toBeNull()
-      await bar(wrapper, 3).trigger('pointerenter', { buttons: 1, pointerType: 'touch' })
+      await pointer(bar(wrapper, 3), 'pointerenter', { buttons: 1, pointerType: 'touch' })
       expect(store.song.settings.loopRange).toBeNull()
       await bar(wrapper, 2).trigger('click')
       expect(store.song.settings.loopRange).toEqual({ start: 2, end: 3 })
